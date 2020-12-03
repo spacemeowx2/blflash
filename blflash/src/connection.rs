@@ -66,7 +66,6 @@ impl Connection {
 
     pub fn read_response(&mut self, len: usize) -> Result<Vec<u8>, Error> {
         let resp = self.read_exact(2)?;
-        log::trace!("read_response {}", String::from_utf8_lossy(&resp).to_string());
         match &resp[0..2] {
             // OK
             [0x4f, 0x4b] => {
@@ -83,7 +82,10 @@ impl Connection {
                 let code = reader.read_u16::<LittleEndian>()?;
                 Err(Error::RomError(RomError::from(code)))
             },
-            _ => Err(Error::RespError)
+            e => {
+                log::trace!("read_response err: {:x?}", e);
+                Err(Error::RespError)
+            }
         }
     }
 
