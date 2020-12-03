@@ -1,11 +1,13 @@
 use crate::connection::{Connection, DEFAULT_BAUDRATE};
 use crate::Error;
 use crate::chip::{Chip, Bl602};
-use crate::image::BinReader;
+use crate::elf::FirmwareImage;
 use serial::{BaudRate, SerialPort};
 use std::{time::{Duration, Instant}, io::{Cursor, Read}};
 use deku::prelude::*;
 use indicatif::{HumanBytes};
+use sha2::{Sha256, Digest};
+use std::thread::sleep;
 
 pub struct Flasher {
     connection: Connection,
@@ -35,13 +37,43 @@ impl Flasher {
         &self.boot_info
     }
 
-    pub fn load_elf_to_flash(&mut self, _input: &[u8]) -> Result<(), Error> {
-        let loader =  self.chip.get_eflash_loader().to_vec();
-        self.load_bin(&loader)?;
+    pub fn load_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
+        self.load_eflash_loader()?;
+        self.handshake()?;
+
+        let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
+        for segment in self.chip.get_flash_segments(&image) {
+            if segment.size != segment.data.len() as u32 {
+                log::warn!("size mismatch {} != {}", segment.size, segment.data.len());
+            }
+            log::info!("Erase flash addr: {:x} size: {}", segment.addr, segment.size);
+            self.flash_erase(segment.addr, segment.addr + segment.size)?;
+            let local_hash = Sha256::digest(&segment.data[0..segment.size as usize]);
+
+            let mut reader = Cursor::new(segment.data);
+            let mut cur = segment.addr;
+            
+            log::info!("Program flash... {:x}", local_hash);
+            loop {
+                let size = self.flash_program(cur, &mut reader)?;
+                if size == 0 {
+                    break
+                }
+                cur += size;
+            }
+            self.flash_program_check()?;
+            log::info!("Program done");
+
+            let sha256 = self.sha256_read(segment.addr, segment.size)?;
+            if sha256 != &local_hash[..] {
+                log::warn!("sha256 not match: {:x?} != {:x?}", sha256, local_hash);
+            }
+        }
         Ok(())
     }
 
-    pub fn load_bin(&mut self, input: &[u8]) -> Result<(), Error> {
+    pub fn load_eflash_loader(&mut self) -> Result<(), Error> {
+        let input =  self.chip.get_eflash_loader().to_vec();
         let len = input.len();
         let mut reader = Cursor::new(input);
         self.load_boot_header(&mut reader)?;
@@ -60,6 +92,62 @@ impl Flasher {
 
         self.check_image()?;
         self.run_image()?;
+        sleep(Duration::from_millis(200));
+
+        Ok(())
+    }
+
+    fn sha256_read(&mut self, addr: u32, len: u32) -> Result<[u8; 32], Error> {
+        let mut req = protocol::Sha256Read {
+            addr,
+            len,
+        };
+        req.update()?;
+        self.connection.write_all(&req.to_bytes()?)?;
+        self.connection.flush()?;
+
+        let data = self.connection.read_response(34)?;
+        let (_, data) = protocol::Sha256ReadResp::from_bytes((&data, 0))?;
+
+        Ok(data.digest)
+    }
+
+    fn flash_program_check(&mut self) -> Result<(), Error> {
+        self.connection.write_all(protocol::FLASH_PROGRAM_CHRCK)?;
+        self.connection.flush()?;
+        self.connection.read_response(0)?;
+        Ok(())
+    }
+
+    fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
+        let mut data = vec![0u8; 4000];
+        let size = reader.read(&mut data)?;
+        if size == 0 {
+            return Ok(0)
+        }
+        data.truncate(size);
+        let mut req = protocol::FlashProgram {
+            addr,
+            data,
+            ..Default::default()
+        };
+        req.update()?;
+        self.connection.write_all(&req.to_bytes()?)?;
+        self.connection.flush()?;
+        self.connection.read_response(0)?;
+
+        Ok(size as u32)
+    }
+
+    fn flash_erase(&mut self, start: u32, end: u32) -> Result<(), Error> {
+        let mut req = protocol::FlashErase {
+            start,
+            end,
+        };
+        req.update()?;
+        self.connection.write_all(&req.to_bytes()?)?;
+        self.connection.flush()?;
+        self.connection.read_response(0)?;
 
         Ok(())
     }
@@ -112,7 +200,7 @@ impl Flasher {
         Ok(())
     }
 
-    fn load_segment_data(&mut self, reader: &mut impl Read) -> Result<usize, Error> {
+    fn load_segment_data(&mut self, reader: &mut impl Read) -> Result<u32, Error> {
         let mut segment_data = vec![0u8; 4000];
         let size = reader.read(&mut segment_data)?;
         if size == 0 {
@@ -128,7 +216,7 @@ impl Flasher {
         self.connection.flush()?;
         self.connection.read_response(0)?;
 
-        Ok(size)
+        Ok(size as u32)
     }
 
     fn get_boot_info(&mut self) -> Result<protocol::BootInfo, Error> {
@@ -182,6 +270,7 @@ mod protocol {
     pub const GET_BOOT_INFO: &[u8] = &[0x10, 0x00, 0x00, 0x00];
     pub const CHECK_IMAGE: &[u8] = &[0x19, 0x00, 0x00, 0x00];
     pub const RUN_IMAGE: &[u8] = &[0x1a, 0x00, 0x00, 0x00];
+    pub const FLASH_PROGRAM_CHRCK: &[u8] = &[0x3a, 0x00, 0x00, 0x00];
     pub const LOAD_BOOT_HEADER_LEN: usize = 176;
     pub const LOAD_SEGMENT_HEADER_LEN: usize = 16;
 
@@ -216,5 +305,40 @@ mod protocol {
         #[deku(update = "self.segment_data.len()")]
         pub segment_data_len: u16,
         pub segment_data: Vec<u8>,
+    }
+
+    #[derive(Debug, DekuWrite, Default)]
+    #[deku(magic = b"\x30\x00\x08\x00", endian = "little")]
+    pub struct FlashErase {
+        pub start: u32,
+        pub end: u32,
+    }
+
+    #[derive(Debug, DekuWrite, Default)]
+    #[deku(magic = b"\x31\x00", endian = "little")]
+    pub struct FlashProgram {
+        #[deku(update = "self.len()")]
+        pub len: u16,
+        pub addr: u32,
+        pub data: Vec<u8>,
+    }
+
+    impl FlashProgram {
+        fn len(&self) -> u16 {
+            self.data.len() as u16 + 4
+        }
+    }
+
+    #[derive(Debug, DekuWrite, Default)]
+    #[deku(magic = b"\x3d\x00\x08\x00", endian = "little")]
+    pub struct Sha256Read {
+        pub addr: u32,
+        pub len: u32,
+    }
+
+    #[derive(Debug, DekuRead)]
+    #[deku(magic = b"\x20\x00")]
+    pub struct Sha256ReadResp {
+        pub digest: [u8; 32],
     }
 }

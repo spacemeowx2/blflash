@@ -32,6 +32,12 @@ fn main() -> Result<(), MainError> {
         serial = config.connection.serial;
     }
 
+    let input: String = match elf {
+        Some(input) => input,
+        _ => return help(),
+    };
+    let input_bytes = read(&input)?;
+
     let serial: String = match serial {
         Some(serial) => serial,
         _ => return help(),
@@ -41,13 +47,9 @@ fn main() -> Result<(), MainError> {
     let mut flasher = Flasher::connect(serial, Some(BaudRate::BaudOther(500_000)))?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
-
-    let input: String = match elf {
-        Some(input) => input,
-        _ => return help(),
-    };
-    let input_bytes = read(&input)?;
     flasher.load_elf_to_flash(&input_bytes)?;
+
+    log::info!("Success");
 
     Ok(())
 }
