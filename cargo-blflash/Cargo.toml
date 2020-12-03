@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["spacelin <spacelin@tencent.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+cargo-project = "0.2.4"
+blflash = { version = "0.1.0", path = "../blflash" }
+main_error = "0.1.1"
+pico-args = "0.3.4"
+serial = "0.4"
