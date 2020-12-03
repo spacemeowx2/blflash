@@ -51,6 +51,17 @@ pub struct CodeSegment<'a> {
     pub data: &'a [u8],
 }
 
+impl<'a> CodeSegment<'a> {
+    pub fn from_slice<D: AsRef<[u8]>>(addr: u32, data: &'a D) -> Self {
+        let data = data.as_ref();
+        CodeSegment {
+            addr,
+            data: &data,
+            size: data.len() as u32,
+        }
+    }
+}
+
 impl PartialEq for CodeSegment<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.addr.eq(&other.addr)

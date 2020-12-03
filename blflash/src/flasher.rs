@@ -1,4 +1,4 @@
-use crate::connection::{Connection, DEFAULT_BAUDRATE};
+use crate::{elf::CodeSegment, connection::{Connection, DEFAULT_BAUDRATE}};
 use crate::Error;
 use crate::chip::{Chip, Bl602};
 use crate::elf::FirmwareImage;
@@ -27,7 +27,7 @@ impl Flasher {
         };
         flasher.connection.set_baud(speed.unwrap_or(DEFAULT_BAUDRATE))?;
         flasher.start_connection()?;
-        flasher.connection.set_timeout(Duration::from_secs(3))?;
+        flasher.connection.set_timeout(Duration::from_secs(10))?;
         flasher.boot_info = flasher.get_boot_info()?;
 
         Ok(flasher)
@@ -37,12 +37,12 @@ impl Flasher {
         &self.boot_info
     }
 
-    pub fn load_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
+    pub fn load_segments<'a>(&'a mut self, segments: impl Iterator<Item=CodeSegment<'a>>) -> Result<(), Error> {
         self.load_eflash_loader()?;
+        self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
         self.handshake()?;
 
-        let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
-        for segment in self.chip.get_flash_segments(&image) {
+        for segment in segments {
             if segment.size != segment.data.len() as u32 {
                 log::warn!("size mismatch {} != {}", segment.size, segment.data.len());
             }
@@ -53,22 +53,52 @@ impl Flasher {
             let mut reader = Cursor::new(segment.data);
             let mut cur = segment.addr;
             
+            let start = Instant::now();
             log::info!("Program flash... {:x}", local_hash);
             loop {
                 let size = self.flash_program(cur, &mut reader)?;
+                // log::trace!("program {:x} {:x}", cur, size);
+                cur += size;
                 if size == 0 {
                     break
                 }
-                cur += size;
             }
-            self.flash_program_check()?;
-            log::info!("Program done");
+            let elapsed = start.elapsed();
+            log::info!("Program done {:?} {}/s", elapsed, HumanBytes((segment.size as f64 / elapsed.as_millis() as f64 * 1000.0) as u64));
 
             let sha256 = self.sha256_read(segment.addr, segment.size)?;
             if sha256 != &local_hash[..] {
                 log::warn!("sha256 not match: {:x?} != {:x?}", sha256, local_hash);
             }
         }
+        Ok(())
+    }
+
+    pub fn check_segments<'a>(&'a mut self, segments: impl Iterator<Item=CodeSegment<'a>>) -> Result<(), Error> {
+        self.load_eflash_loader()?;
+        self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
+        self.handshake()?;
+
+        for segment in segments {
+            if segment.size != segment.data.len() as u32 {
+                log::warn!("size mismatch {} != {}", segment.size, segment.data.len());
+            }
+            let local_hash = Sha256::digest(&segment.data[0..segment.size as usize]);
+
+            let sha256 = self.sha256_read(segment.addr, segment.size)?;
+            if sha256 != &local_hash[..] {
+                log::warn!("{:x} sha256 not match: {:x?} != {:x?}", segment.addr, sha256, local_hash);
+            } else {
+                log::info!("{:x} sha256 match", segment.addr);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn load_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
+        let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
+        let segs = self.chip.get_flash_segments(&image);
+        self.load_segments(segs.into_iter())?;
         Ok(())
     }
 
@@ -112,12 +142,12 @@ impl Flasher {
         Ok(data.digest)
     }
 
-    fn flash_program_check(&mut self) -> Result<(), Error> {
-        self.connection.write_all(protocol::FLASH_PROGRAM_CHRCK)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
-        Ok(())
-    }
+    // fn flash_program_check(&mut self) -> Result<(), Error> {
+    //     self.connection.write_all(protocol::FLASH_PROGRAM_CHRCK)?;
+    //     self.connection.flush()?;
+    //     self.connection.read_response(0)?;
+    //     Ok(())
+    // }
 
     fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
         let mut data = vec![0u8; 4000];
@@ -270,7 +300,7 @@ mod protocol {
     pub const GET_BOOT_INFO: &[u8] = &[0x10, 0x00, 0x00, 0x00];
     pub const CHECK_IMAGE: &[u8] = &[0x19, 0x00, 0x00, 0x00];
     pub const RUN_IMAGE: &[u8] = &[0x1a, 0x00, 0x00, 0x00];
-    pub const FLASH_PROGRAM_CHRCK: &[u8] = &[0x3a, 0x00, 0x00, 0x00];
+    // pub const FLASH_PROGRAM_CHRCK: &[u8] = &[0x3a, 0x00, 0x00, 0x00];
     pub const LOAD_BOOT_HEADER_LEN: usize = 176;
     pub const LOAD_SEGMENT_HEADER_LEN: usize = 16;
 

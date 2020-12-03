@@ -44,9 +44,25 @@ fn main() -> Result<(), MainError> {
     };
 
     let serial = serial::open(&serial)?;
-    let mut flasher = Flasher::connect(serial, Some(BaudRate::BaudOther(500_000)))?;
+    let mut flasher = Flasher::connect(serial, Some(BaudRate::BaudOther(512_000)))?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
+    log::trace!("Boot info: {:x?}", flasher.boot_info());
+
+    // use blflash::elf::CodeSegment;
+    // let a = read("image/boot2image.bin")?;
+    // let b = read("image/partition.bin")?;
+    // let c = read("image/fwimage.bin")?;
+    // let d = read("image/ro_params.dtb")?;
+    // let segments = vec![
+    //     CodeSegment::from_slice(0x0, &a),
+    //     CodeSegment::from_slice(0xe000, &b),
+    //     CodeSegment::from_slice(0xf000, &b),
+    //     CodeSegment::from_slice(0x10000, &c),
+    //     CodeSegment::from_slice(0x1f8000, &d),
+    // ];
+    // flasher.load_segments(segments.into_iter())?;
+    // flasher.check_segments(segments.into_iter())?;
     flasher.load_elf_to_flash(&input_bytes)?;
 
     log::info!("Success");
