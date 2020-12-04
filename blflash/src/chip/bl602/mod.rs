@@ -1,8 +1,9 @@
 use super::{Chip, CodeSegment, FirmwareImage};
 
 const EFLASH_LOADER: &'static [u8] = include_bytes!("eflash_loader_40m.bin");
-const ROM_START: u32 = 0x21000000;
-const ROM_END: u32 = 0x21000000 + 0x20000;
+const ROM_START: u32 = 0x23000000;
+// 16MB
+const ROM_END: u32 = 0x23000000 + 0x1000000;
 
 pub struct Bl602;
 
