@@ -3,3 +3,4 @@ members = [
     "cargo-blflash",
     "blflash",
 ]
+default-members = ["blflash"]

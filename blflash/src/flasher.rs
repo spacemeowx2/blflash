@@ -177,13 +177,6 @@ impl Flasher {
         Ok(data.digest)
     }
 
-    // fn flash_program_check(&mut self) -> Result<(), Error> {
-    //     self.connection.write_all(protocol::FLASH_PROGRAM_CHRCK)?;
-    //     self.connection.flush()?;
-    //     self.connection.read_response(0)?;
-    //     Ok(())
-    // }
-
     fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
         let mut data = vec![0u8; 4000];
         let size = reader.read(&mut data)?;
@@ -335,7 +328,6 @@ mod protocol {
     pub const GET_BOOT_INFO: &[u8] = &[0x10, 0x00, 0x00, 0x00];
     pub const CHECK_IMAGE: &[u8] = &[0x19, 0x00, 0x00, 0x00];
     pub const RUN_IMAGE: &[u8] = &[0x1a, 0x00, 0x00, 0x00];
-    // pub const FLASH_PROGRAM_CHRCK: &[u8] = &[0x3a, 0x00, 0x00, 0x00];
     pub const LOAD_BOOT_HEADER_LEN: usize = 176;
     pub const LOAD_SEGMENT_HEADER_LEN: usize = 16;
 
