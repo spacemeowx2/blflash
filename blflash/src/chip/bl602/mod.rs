@@ -4,6 +4,7 @@ use deku::prelude::*;
 
 pub const DEFAULT_PARTITION_CFG: &'static [u8] = include_bytes!("cfg/partition_cfg_2M.toml");
 pub const DEFAULT_BOOTHEADER_CFG: &'static [u8] = include_bytes!("cfg/efuse_bootheader_cfg.conf");
+pub const RO_PARAMS: &'static [u8] = include_bytes!("cfg/ro_params.dtb");
 pub const BLSP_BOOT2: &'static [u8] = include_bytes!("image/blsp_boot2.bin");
 pub const EFLASH_LOADER: &'static [u8] = include_bytes!("image/eflash_loader_40m.bin");
 const ROM_START: u32 = 0x23000000;
@@ -28,17 +29,17 @@ impl Bl602 {
 
         let boot2image = bootheader_cfg.make_image(0x2000, Vec::from(BLSP_BOOT2))?;
         let fw_image = bootheader_cfg.make_image(0x1000, Vec::from(bin))?;
-        log::trace!("{}", hex::encode(&boot2image[0..200]));
 
-        let _segments = vec![
+        let segments = vec![
             RomSegment::from_vec(0x0, boot2image),
             RomSegment::from_vec(0xe000, partition_cfg.clone()),
             RomSegment::from_vec(0xf000, partition_cfg),
-            RomSegment::from_vec(0x10000, fw_image.clone()),
-            // FlashSegment::from_slice(0x1f8000, &d),
+            RomSegment::from_vec(0x10000, fw_image),
+            // TODO: generate from dts
+            RomSegment::from_slice(0x1f8000, RO_PARAMS),
         ];
 
-        todo!()
+        Ok(segments)
     }
 }
 

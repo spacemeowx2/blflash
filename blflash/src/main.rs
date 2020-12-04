@@ -16,8 +16,10 @@ struct FlashOpt {
     #[structopt(parse(from_os_str))]
     image: PathBuf,
     /// Path to partition_cfg.toml, default to be partition/partition_cfg_2M.toml
+    #[structopt(parse(from_os_str))]
     partition_cfg: Option<PathBuf>,
     /// Path to efuse_bootheader_cfg.conf
+    #[structopt(parse(from_os_str))]
     boot_header_cfg: Option<PathBuf>,
     /// With boot2
     #[structopt(short, long)]

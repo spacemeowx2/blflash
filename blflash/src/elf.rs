@@ -96,6 +96,12 @@ impl<'a> RomSegment<'a> {
             data: Cow::Owned(data),
         }
     }
+    pub fn from_slice(addr: u32, data: &'a [u8]) -> RomSegment<'a> {
+        RomSegment {
+            addr,
+            data: Cow::Borrowed(data),
+        }
+    }
     pub fn from_code_segment(addr: u32, code_segment: CodeSegment<'a>) -> RomSegment<'a>
     {
         Self {
