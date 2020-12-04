@@ -1,6 +1,6 @@
 use super::{Chip, CodeSegment, FlashSegment};
 
-const EFLASH_LOADER: &'static [u8] = include_bytes!("eflash_loader_40m.bin");
+const EFLASH_LOADER: &'static [u8] = include_bytes!("image/eflash_loader_40m.bin");
 const ROM_START: u32 = 0x23000000;
 // 16MB
 const ROM_END: u32 = 0x23000000 + 0x1000000;

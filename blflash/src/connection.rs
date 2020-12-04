@@ -21,6 +21,17 @@ impl Connection {
         }
     }
 
+    pub fn reset(&mut self) -> Result<(), Error> {
+        self.serial.set_rts(false)?;
+        sleep(Duration::from_millis(50));
+        self.serial.set_dtr(true)?;
+        sleep(Duration::from_millis(50));
+        self.serial.set_dtr(false)?;
+        sleep(Duration::from_millis(50));
+
+        Ok(())
+    }
+
     pub fn reset_to_flash(&mut self) -> Result<(), Error> {
         self.serial.set_rts(true)?;
         sleep(Duration::from_millis(50));

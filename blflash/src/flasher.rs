@@ -162,6 +162,10 @@ impl Flasher {
         Ok(())
     }
 
+    pub fn reset(&mut self) -> Result<(), Error> {
+        Ok(self.connection.reset()?)
+    }
+
     fn sha256_read(&mut self, addr: u32, len: u32) -> Result<[u8; 32], Error> {
         let mut req = protocol::Sha256Read {
             addr,

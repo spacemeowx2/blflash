@@ -54,10 +54,10 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
     //     CodeSegment::from_slice(0x1f8000, &d),
     // ];
     // flasher.load_segments(segments.into_iter())?;
-    // flasher.check_segments(segments.into_iter())?;
     let input_bytes = read(&opt.image)?;
     flasher.load_elf_to_flash(&input_bytes)?;
 
+    flasher.reset()?;
     log::info!("Success");
     Ok(())
 }
