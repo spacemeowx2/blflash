@@ -1,5 +1,5 @@
 [package]
-name = "blflash"
+name = "cargo-blflash"
 description = "BL602 serial flasher."
 version = "0.1.0"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
