@@ -9,6 +9,6 @@ ISP documentation: https://github.com/bouffalolab/bl_docs/tree/main/BL602_ISP
 ## TODO
 
 - [x] Flash protocol
-- [ ] Generate Partition bin
-- [ ] Generate boot info with compiled
+- [x] Generate Partition bin
+- [ ] Generate boot info with compiled bin
 - [ ] Generate dtb bin
