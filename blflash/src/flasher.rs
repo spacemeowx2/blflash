@@ -5,9 +5,29 @@ use crate::elf::FirmwareImage;
 use serial::{BaudRate, SerialPort};
 use std::{time::{Duration, Instant}, io::{Cursor, Read}};
 use deku::prelude::*;
-use indicatif::{HumanBytes};
+use indicatif::HumanBytes;
 use sha2::{Sha256, Digest};
 use std::thread::sleep;
+
+pub struct FlashSegment<'a> {
+    pub addr: u32,
+    pub code_segment: CodeSegment<'a>,
+}
+#[allow(dead_code)]
+impl<'a> FlashSegment<'a> {
+    fn addr(&self) -> u32 {
+        self.addr
+    }
+    fn virt_addr(&self) -> u32 {
+        self.code_segment.addr
+    }
+    fn data(&self) -> &[u8] {
+        self.code_segment.data
+    }
+    fn size(&self) -> u32 {
+        self.code_segment.size
+    }
+}
 
 pub struct Flasher {
     connection: Connection,
@@ -37,20 +57,20 @@ impl Flasher {
         &self.boot_info
     }
 
-    pub fn load_segments<'a>(&'a mut self, segments: impl Iterator<Item=CodeSegment<'a>>) -> Result<(), Error> {
+    pub fn load_segments<'a>(&'a mut self, segments: impl Iterator<Item=FlashSegment<'a>>) -> Result<(), Error> {
         self.load_eflash_loader()?;
         self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
         self.handshake()?;
 
         for segment in segments {
-            if segment.size != segment.data.len() as u32 {
-                log::warn!("size mismatch {} != {}", segment.size, segment.data.len());
+            if segment.size() != segment.data().len() as u32 {
+                log::warn!("size mismatch {} != {}", segment.size(), segment.data().len());
             }
-            log::info!("Erase flash addr: {:x} size: {}", segment.addr, segment.size);
-            self.flash_erase(segment.addr, segment.addr + segment.size)?;
-            let local_hash = Sha256::digest(&segment.data[0..segment.size as usize]);
+            log::info!("Erase flash addr: {:x} size: {}", segment.addr(), segment.size());
+            self.flash_erase(segment.addr(), segment.addr() + segment.size())?;
+            let local_hash = Sha256::digest(&segment.data()[0..segment.size() as usize]);
 
-            let mut reader = Cursor::new(segment.data);
+            let mut reader = Cursor::new(segment.data());
             let mut cur = segment.addr;
             
             let start = Instant::now();
@@ -64,9 +84,9 @@ impl Flasher {
                 }
             }
             let elapsed = start.elapsed();
-            log::info!("Program done {:?} {}/s", elapsed, HumanBytes((segment.size as f64 / elapsed.as_millis() as f64 * 1000.0) as u64));
+            log::info!("Program done {:?} {}/s", elapsed, HumanBytes((segment.size() as f64 / elapsed.as_millis() as f64 * 1000.0) as u64));
 
-            let sha256 = self.sha256_read(segment.addr, segment.size)?;
+            let sha256 = self.sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
                 log::warn!("sha256 not match: {:x?} != {:x?}", sha256, local_hash);
             }
@@ -74,22 +94,22 @@ impl Flasher {
         Ok(())
     }
 
-    pub fn check_segments<'a>(&'a mut self, segments: impl Iterator<Item=CodeSegment<'a>>) -> Result<(), Error> {
+    pub fn check_segments<'a>(&'a mut self, segments: impl Iterator<Item=FlashSegment<'a>>) -> Result<(), Error> {
         self.load_eflash_loader()?;
         self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
         self.handshake()?;
 
         for segment in segments {
-            if segment.size != segment.data.len() as u32 {
-                log::warn!("size mismatch {} != {}", segment.size, segment.data.len());
+            if segment.size() != segment.data().len() as u32 {
+                log::warn!("size mismatch {} != {}", segment.size(), segment.data().len());
             }
-            let local_hash = Sha256::digest(&segment.data[0..segment.size as usize]);
+            let local_hash = Sha256::digest(&segment.data()[0..segment.size() as usize]);
 
-            let sha256 = self.sha256_read(segment.addr, segment.size)?;
+            let sha256 = self.sha256_read(segment.addr(), segment.size())?;
             if sha256 != &local_hash[..] {
-                log::warn!("{:x} sha256 not match: {:x?} != {:x?}", segment.addr, sha256, local_hash);
+                log::warn!("{:x} sha256 not match: {:x?} != {:x?}", segment.addr(), sha256, local_hash);
             } else {
-                log::info!("{:x} sha256 match", segment.addr);
+                log::info!("{:x} sha256 match", segment.addr());
             }
         }
         Ok(())
@@ -97,8 +117,23 @@ impl Flasher {
 
     pub fn load_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
         let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
-        let segs = self.chip.get_flash_segments(&image);
+        let segs = image
+            .segments()
+            .filter_map(|segment| self.chip.get_flash_segment(segment))
+            .collect::<Vec<_>>();
+
         self.load_segments(segs.into_iter())?;
+        Ok(())
+    }
+
+    pub fn check_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
+        let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
+        let segs = image
+            .segments()
+            .filter_map(|segment| self.chip.get_flash_segment(segment))
+            .collect::<Vec<_>>();
+
+        self.check_segments(segs.into_iter())?;
         Ok(())
     }
 
@@ -249,7 +284,7 @@ impl Flasher {
         Ok(size as u32)
     }
 
-    fn get_boot_info(&mut self) -> Result<protocol::BootInfo, Error> {
+    pub fn get_boot_info(&mut self) -> Result<protocol::BootInfo, Error> {
         self.connection.write_all(protocol::GET_BOOT_INFO)?;
         self.connection.flush()?;
         let data = self.connection.read_response(22)?;

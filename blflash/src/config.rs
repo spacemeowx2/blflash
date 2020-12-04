@@ -23,8 +23,8 @@ pub struct Build {
 impl Config {
     /// Load the config from config file
     pub fn load() -> Self {
-        let dirs = ProjectDirs::from("rs", "esp", "espflash").unwrap();
-        let file = dirs.config_dir().join("espflash.toml");
+        let dirs = ProjectDirs::from("rs", "bl", "blflash").unwrap();
+        let file = dirs.config_dir().join("blflash.toml");
         if let Ok(data) = read(&file) {
             toml::from_slice(&data).unwrap()
         } else {

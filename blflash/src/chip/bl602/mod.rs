@@ -1,4 +1,4 @@
-use super::{Chip, CodeSegment, FirmwareImage};
+use super::{Chip, CodeSegment, FlashSegment};
 
 const EFLASH_LOADER: &'static [u8] = include_bytes!("eflash_loader_40m.bin");
 const ROM_START: u32 = 0x23000000;
@@ -18,16 +18,14 @@ impl Chip for Bl602 {
         EFLASH_LOADER
     }
 
-    fn get_flash_segments<'a>(&self, image: &'a FirmwareImage) -> Vec<CodeSegment<'a>> {
-        image.segments().filter_map(|s| {
-            if self.addr_is_flash(s.addr) {
-                Some(CodeSegment {
-                    addr: s.addr - ROM_START,
-                    ..s
-                })
-            } else {
-                None
-            }
-        }).collect()
+    fn get_flash_segment<'a>(&self, code_segment: CodeSegment<'a>) -> Option<FlashSegment<'a>> {
+        if self.addr_is_flash(code_segment.addr) {
+            Some(FlashSegment {
+                addr: code_segment.addr - ROM_START,
+                code_segment,
+            })
+        } else {
+            None
+        }
     }
 }

@@ -1,54 +1,46 @@
 use std::fs::read;
 
-use blflash::{Config, Flasher};
+use blflash::{Config, Flasher, Error};
 use main_error::MainError;
-use pico_args::Arguments;
 use serial::BaudRate;
 use env_logger::Env;
+use structopt::StructOpt;
+use std::path::PathBuf;
 
-fn help() -> Result<(), MainError> {
-    println!("Usage: espflash [--board-info] [--ram] <serial> <elf image>");
-    Ok(())
+#[derive(StructOpt)]
+struct FlashOpt {
+    /// Serial port
+    #[structopt(short, long)]
+    port: String,
+    /// Bin file
+    #[structopt(parse(from_os_str))]
+    image: PathBuf,
 }
 
-fn main() -> Result<(), MainError> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("blflash=trace")).init();
-    let mut args = Arguments::from_env();
-    let config = Config::load();
+#[derive(StructOpt)]
+struct CheckOpt {
+    /// Serial port
+    #[structopt(short, long)]
+    port: String,
+    /// Bin file
+    #[structopt(parse(from_os_str))]
+    image: PathBuf,
+}
 
-    log::trace!("trace on");
+#[derive(StructOpt)]
+enum Opt {
+    /// Flash image to serial
+    Flash(FlashOpt),
+    /// Check if the device's flash matches the image
+    Check(CheckOpt),
+}
 
-    if args.contains(["-h", "--help"]) {
-        return help();
-    }
-
-    let _ram = args.contains("--ram");
-
-    let mut serial: Option<String> = args.free_from_str()?;
-    let mut elf: Option<String> = args.free_from_str()?;
-
-    if elf.is_none() && config.connection.serial.is_some() {
-        elf = serial.take();
-        serial = config.connection.serial;
-    }
-
-    let input: String = match elf {
-        Some(input) => input,
-        _ => return help(),
-    };
-    let input_bytes = read(&input)?;
-
-    let serial: String = match serial {
-        Some(serial) => serial,
-        _ => return help(),
-    };
-
-    let serial = serial::open(&serial)?;
-    let mut flasher = Flasher::connect(serial, Some(BaudRate::BaudOther(512_000)))?;
+fn flash(opt: FlashOpt) -> Result<(), Error> {
+    let serial = serial::open(&opt.port)?;
+    let mut flasher = Flasher::connect(serial, Some(BaudRate::Baud115200))?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
-
     // use blflash::elf::CodeSegment;
     // let a = read("image/boot2image.bin")?;
     // let b = read("image/partition.bin")?;
@@ -63,9 +55,36 @@ fn main() -> Result<(), MainError> {
     // ];
     // flasher.load_segments(segments.into_iter())?;
     // flasher.check_segments(segments.into_iter())?;
+    let input_bytes = read(&opt.image)?;
     flasher.load_elf_to_flash(&input_bytes)?;
 
     log::info!("Success");
+    Ok(())
+}
+
+fn check(opt: CheckOpt) -> Result<(), Error> {
+    let serial = serial::open(&opt.port)?;
+    let mut flasher = Flasher::connect(serial, Some(BaudRate::Baud115200))?;
+
+    log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
+    log::trace!("Boot info: {:x?}", flasher.boot_info());
+
+    let input_bytes = read(&opt.image)?;
+    flasher.check_elf_to_flash(&input_bytes)?;
+
+    Ok(())
+}
+
+#[paw::main]
+fn main(args: Opt) -> Result<(), MainError> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("blflash=trace")).init();
+    let _config = Config::load();
+    
+    match args {
+        Opt::Flash(opt) => flash(opt)?,
+        Opt::Check(opt) => check(opt)?,
+    };
+
 
     Ok(())
 }
