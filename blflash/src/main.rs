@@ -1,6 +1,6 @@
 use std::fs::read;
 
-use blflash::{Config, Flasher, Error, chip::bl602::{self, Bl602}};
+use blflash::{Config, Flasher, Error, chip::bl602::{self, Bl602}, image::BootHeaderCfgFile};
 use main_error::MainError;
 use serial::BaudRate;
 use env_logger::Env;
@@ -17,6 +17,8 @@ struct FlashOpt {
     image: PathBuf,
     /// Path to partition_cfg.toml, default to be partition/partition_cfg_2M.toml
     partition_cfg: Option<PathBuf>,
+    /// Path to efuse_bootheader_cfg.conf
+    boot_header_cfg: Option<PathBuf>,
     /// With boot2
     #[structopt(short, long)]
     without_boot2: bool,
@@ -49,12 +51,18 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
             .partition_cfg
             .map(read)
             .unwrap_or_else(|| Ok(bl602::DEFAULT_PARTITION_CFG.to_vec()))?;
+        let boot_header_cfg = opt
+            .boot_header_cfg
+            .map(read)
+            .unwrap_or_else(|| Ok(bl602::DEFAULT_BOOTHEADER_CFG.to_vec()))?;
         let partition_cfg = toml::from_slice(&partition_cfg)?;
+        let BootHeaderCfgFile { boot_header_cfg } = toml::from_slice(&boot_header_cfg)?;
 
         let bin = read(&opt.image)?;
         let segments = chip.with_boot2(
             partition_cfg,
-            &bin
+            boot_header_cfg,
+            &bin,
         )?;
         let mut flasher = Flasher::connect(
             chip,

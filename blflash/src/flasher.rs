@@ -1,6 +1,6 @@
 use crate::{elf::CodeSegment, connection::{Connection, DEFAULT_BAUDRATE}};
 use crate::Error;
-use crate::chip::{Chip, Bl602};
+use crate::chip::Chip;
 use crate::elf::FirmwareImage;
 use serial::{BaudRate, SerialPort};
 use std::{time::{Duration, Instant}, io::{Cursor, Read}};
@@ -13,6 +13,7 @@ pub struct FlashSegment<'a> {
     pub addr: u32,
     pub code_segment: CodeSegment<'a>,
 }
+
 #[allow(dead_code)]
 impl<'a> FlashSegment<'a> {
     fn addr(&self) -> u32 {
@@ -26,6 +27,12 @@ impl<'a> FlashSegment<'a> {
     }
     fn size(&self) -> u32 {
         self.code_segment.size
+    }
+    pub fn from_slice<D: AsRef<[u8]>>(addr: u32, data: &'a D) -> Self {
+        FlashSegment {
+            addr,
+            code_segment: CodeSegment::from_slice(addr, data),
+        }
     }
 }
 

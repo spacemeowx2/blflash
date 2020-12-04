@@ -3,7 +3,7 @@ mod flasher;
 mod connection;
 pub mod chip;
 mod error;
-mod image;
+pub mod image;
 pub mod elf;
 
 pub use config::Config;
