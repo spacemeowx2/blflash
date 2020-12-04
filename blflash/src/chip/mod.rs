@@ -1,4 +1,4 @@
-mod bl602;
+pub mod bl602;
 pub use bl602::Bl602;
 pub use crate::elf::{FirmwareImage, CodeSegment};
 pub use crate::flasher::FlashSegment;

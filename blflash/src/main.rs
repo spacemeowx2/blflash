@@ -1,6 +1,6 @@
 use std::fs::read;
 
-use blflash::{Config, Flasher, Error};
+use blflash::{Config, Flasher, Error, chip::bl602::{self, Bl602}};
 use main_error::MainError;
 use serial::BaudRate;
 use env_logger::Env;
@@ -15,6 +15,11 @@ struct FlashOpt {
     /// Bin file
     #[structopt(parse(from_os_str))]
     image: PathBuf,
+    /// Path to partition_cfg.toml, default to be partition/partition_cfg_2M.toml
+    partition_cfg: Option<PathBuf>,
+    /// With boot2
+    #[structopt(short, long)]
+    without_boot2: bool,
 }
 
 #[derive(StructOpt)]
@@ -37,34 +42,59 @@ enum Opt {
 
 fn flash(opt: FlashOpt) -> Result<(), Error> {
     let serial = serial::open(&opt.port)?;
-    let mut flasher = Flasher::connect(serial, Some(BaudRate::Baud115200))?;
+    let chip = Bl602;
 
-    log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
-    log::trace!("Boot info: {:x?}", flasher.boot_info());
-    // use blflash::elf::CodeSegment;
-    // let a = read("image/boot2image.bin")?;
-    // let b = read("image/partition.bin")?;
-    // let c = read("image/fwimage.bin")?;
-    // let d = read("image/ro_params.dtb")?;
-    // let segments = vec![
-    //     CodeSegment::from_slice(0x0, &a),
-    //     CodeSegment::from_slice(0xe000, &b),
-    //     CodeSegment::from_slice(0xf000, &b),
-    //     CodeSegment::from_slice(0x10000, &c),
-    //     CodeSegment::from_slice(0x1f8000, &d),
-    // ];
-    // flasher.load_segments(segments.into_iter())?;
-    let input_bytes = read(&opt.image)?;
-    flasher.load_elf_to_flash(&input_bytes)?;
+    if !opt.without_boot2 {
+        let partition_cfg = opt
+            .partition_cfg
+            .map(read)
+            .unwrap_or_else(|| Ok(bl602::DEFAULT_PARTITION_CFG.to_vec()))?;
+        let partition_cfg = toml::from_slice(&partition_cfg)?;
 
-    flasher.reset()?;
+        let bin = read(&opt.image)?;
+        let segments = chip.with_boot2(
+            partition_cfg,
+            &bin
+        )?;
+        let mut flasher = Flasher::connect(
+            chip,
+            serial,
+            Some(BaudRate::Baud115200)
+        )?;
+    
+        log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
+        log::trace!("Boot info: {:x?}", flasher.boot_info());
+
+        flasher.load_segments(segments.into_iter())?;
+    
+        flasher.reset()?;
+    } else {
+        let mut flasher = Flasher::connect(
+            chip,
+            serial,
+            Some(BaudRate::Baud115200)
+        )?;
+    
+        log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
+        log::trace!("Boot info: {:x?}", flasher.boot_info());
+
+        let input_bytes = read(&opt.image)?;
+        flasher.load_elf_to_flash(&input_bytes)?;
+    
+        flasher.reset()?;
+    }
+
     log::info!("Success");
     Ok(())
 }
 
 fn check(opt: CheckOpt) -> Result<(), Error> {
     let serial = serial::open(&opt.port)?;
-    let mut flasher = Flasher::connect(serial, Some(BaudRate::Baud115200))?;
+    let mut flasher = Flasher::connect(
+        Bl602,
+        serial,
+        Some(BaudRate::Baud115200),
+    )?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());

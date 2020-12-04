@@ -37,13 +37,14 @@ pub struct Flasher {
 
 impl Flasher {
     pub fn connect(
+        chip: impl Chip + 'static,
         serial: impl SerialPort + 'static,
         speed: Option<BaudRate>,
     ) -> Result<Self, Error> {
         let mut flasher = Flasher {
             connection: Connection::new(serial),
             boot_info: protocol::BootInfo::default(),
-            chip: Box::new(Bl602),
+            chip: Box::new(chip),
         };
         flasher.connection.set_baud(speed.unwrap_or(DEFAULT_BAUDRATE))?;
         flasher.start_connection()?;

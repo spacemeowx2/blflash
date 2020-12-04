@@ -25,6 +25,8 @@ pub enum Error {
     RomError(RomError),
     #[error("Parse error")]
     ParseError(#[from] deku::error::DekuError),
+    #[error("Parse toml error")]
+    TomlError(#[from] toml::de::Error),
 }
 
 impl From<std::io::Error> for Error {

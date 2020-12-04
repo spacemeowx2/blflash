@@ -1,7 +1,7 @@
 mod config;
 mod flasher;
 mod connection;
-mod chip;
+pub mod chip;
 mod error;
 mod image;
 pub mod elf;
