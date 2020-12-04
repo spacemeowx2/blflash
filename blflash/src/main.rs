@@ -24,6 +24,9 @@ struct FlashOpt {
     /// With boot2
     #[structopt(short, long)]
     without_boot2: bool,
+    /// Don't skip if hash matches
+    #[structopt(short, long)]
+    force: bool,
 }
 
 #[derive(StructOpt)]
@@ -75,7 +78,7 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
         log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
         log::trace!("Boot info: {:x?}", flasher.boot_info());
 
-        flasher.load_segments(segments.into_iter())?;
+        flasher.load_segments(opt.force, segments.into_iter())?;
     
         flasher.reset()?;
     } else {
@@ -89,7 +92,7 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
         log::trace!("Boot info: {:x?}", flasher.boot_info());
 
         let input_bytes = read(&opt.image)?;
-        flasher.load_elf_to_flash(&input_bytes)?;
+        flasher.load_elf_to_flash(opt.force, &input_bytes)?;
     
         flasher.reset()?;
     }

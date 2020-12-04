@@ -38,15 +38,25 @@ impl Flasher {
         &self.boot_info
     }
 
-    pub fn load_segments<'a>(&'a mut self, segments: impl Iterator<Item=RomSegment<'a>>) -> Result<(), Error> {
+    pub fn load_segments<'a>(&'a mut self, force: bool, segments: impl Iterator<Item=RomSegment<'a>>) -> Result<(), Error> {
         self.load_eflash_loader()?;
         self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
         self.handshake()?;
 
         for segment in segments {
+            let local_hash = Sha256::digest(&segment.data[0..segment.size() as usize]);
+
+            // skip segment if the contents are matched
+            if !force {
+                let sha256 = self.sha256_read(segment.addr, segment.size())?;
+                if sha256 == &local_hash[..] {
+                    log::info!("Skip segment addr: {:x} size: {} sha256 matches", segment.addr, segment.size());
+                    continue
+                }
+            }
+
             log::info!("Erase flash addr: {:x} size: {}", segment.addr, segment.size());
             self.flash_erase(segment.addr, segment.addr + segment.size())?;
-            let local_hash = Sha256::digest(&segment.data[0..segment.size() as usize]);
 
             let mut reader = Cursor::new(&segment.data);
             let mut cur = segment.addr;
@@ -90,14 +100,14 @@ impl Flasher {
         Ok(())
     }
 
-    pub fn load_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
+    pub fn load_elf_to_flash(&mut self, force: bool, elf_data: &[u8]) -> Result<(), Error> {
         let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
         let segs = image
             .segments()
             .filter_map(|segment| self.chip.get_flash_segment(segment))
             .collect::<Vec<_>>();
 
-        self.load_segments(segs.into_iter())?;
+        self.load_segments(force, segs.into_iter())?;
         Ok(())
     }
 
