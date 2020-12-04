@@ -62,6 +62,12 @@ impl<'a> CodeSegment<'a> {
     }
 }
 
+impl<'a> AsRef<[u8]> for CodeSegment<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.data
+    }
+}
+
 impl PartialEq for CodeSegment<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.addr.eq(&other.addr)
@@ -80,10 +86,21 @@ pub struct RomSegment<'a> {
     pub data: Cow<'a, [u8]>,
 }
 
-pub fn update_checksum(data: &[u8], mut checksum: u8) -> u8 {
-    for byte in data {
-        checksum ^= *byte;
+impl<'a> RomSegment<'a> {
+    pub fn size(&self) -> u32 {
+        self.data.len() as u32
     }
-
-    checksum
+    pub fn from_vec(addr: u32, data: Vec<u8>) -> Self {
+        RomSegment {
+            addr,
+            data: Cow::Owned(data),
+        }
+    }
+    pub fn from_code_segment(addr: u32, code_segment: CodeSegment<'a>) -> RomSegment<'a>
+    {
+        Self {
+            addr,
+            data: Cow::Borrowed(code_segment.data),
+        }
+    }
 }

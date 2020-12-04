@@ -1,4 +1,4 @@
-use super::{Chip, CodeSegment, FlashSegment};
+use super::{Chip, CodeSegment, RomSegment};
 use crate::{Error, image::{PartitionCfg, BootHeaderCfg}};
 use deku::prelude::*;
 
@@ -22,7 +22,7 @@ impl Bl602 {
         mut partition_cfg: PartitionCfg,
         mut bootheader_cfg: BootHeaderCfg,
         bin: &[u8],
-    ) -> Result<Vec<FlashSegment>, Error> {
+    ) -> Result<Vec<RomSegment>, Error> {
         partition_cfg.update()?;
         let partition_cfg = partition_cfg.to_bytes()?;
 
@@ -31,10 +31,10 @@ impl Bl602 {
         log::trace!("{}", hex::encode(&boot2image[0..200]));
 
         let _segments = vec![
-            FlashSegment::from_slice(0x0, &boot2image),
-            FlashSegment::from_slice(0xe000, &partition_cfg),
-            FlashSegment::from_slice(0xf000, &partition_cfg),
-            FlashSegment::from_slice(0x10000, &fw_image),
+            RomSegment::from_vec(0x0, boot2image),
+            RomSegment::from_vec(0xe000, partition_cfg.clone()),
+            RomSegment::from_vec(0xf000, partition_cfg),
+            RomSegment::from_vec(0x10000, fw_image.clone()),
             // FlashSegment::from_slice(0x1f8000, &d),
         ];
 
@@ -47,12 +47,9 @@ impl Chip for Bl602 {
         EFLASH_LOADER
     }
 
-    fn get_flash_segment<'a>(&self, code_segment: CodeSegment<'a>) -> Option<FlashSegment<'a>> {
+    fn get_flash_segment<'a>(&self, code_segment: CodeSegment<'a>) -> Option<RomSegment<'a>> {
         if self.addr_is_flash(code_segment.addr) {
-            Some(FlashSegment {
-                addr: code_segment.addr - ROM_START,
-                code_segment,
-            })
+            Some(RomSegment::from_code_segment(code_segment.addr - ROM_START, code_segment))
         } else {
             None
         }
