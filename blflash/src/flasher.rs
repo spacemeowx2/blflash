@@ -1,13 +1,19 @@
-use crate::{connection::{Connection, DEFAULT_BAUDRATE}, elf::RomSegment};
-use crate::Error;
 use crate::chip::Chip;
 use crate::elf::FirmwareImage;
-use serial::{BaudRate, SerialPort};
-use std::{time::{Duration, Instant}, io::{Cursor, Read}};
+use crate::Error;
+use crate::{
+    connection::{Connection, DEFAULT_BAUDRATE},
+    elf::RomSegment,
+};
 use deku::prelude::*;
 use indicatif::HumanBytes;
-use sha2::{Sha256, Digest};
+use serial::{BaudRate, SerialPort};
+use sha2::{Digest, Sha256};
 use std::thread::sleep;
+use std::{
+    io::{Cursor, Read},
+    time::{Duration, Instant},
+};
 
 pub struct Flasher {
     connection: Connection,
@@ -26,7 +32,9 @@ impl Flasher {
             boot_info: protocol::BootInfo::default(),
             chip: Box::new(chip),
         };
-        flasher.connection.set_baud(speed.unwrap_or(DEFAULT_BAUDRATE))?;
+        flasher
+            .connection
+            .set_baud(speed.unwrap_or(DEFAULT_BAUDRATE))?;
         flasher.start_connection()?;
         flasher.connection.set_timeout(Duration::from_secs(10))?;
         flasher.boot_info = flasher.get_boot_info()?;
@@ -38,7 +46,11 @@ impl Flasher {
         &self.boot_info
     }
 
-    pub fn load_segments<'a>(&'a mut self, force: bool, segments: impl Iterator<Item=RomSegment<'a>>) -> Result<(), Error> {
+    pub fn load_segments<'a>(
+        &'a mut self,
+        force: bool,
+        segments: impl Iterator<Item = RomSegment<'a>>,
+    ) -> Result<(), Error> {
         self.load_eflash_loader()?;
         self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
         self.handshake()?;
@@ -50,17 +62,25 @@ impl Flasher {
             if !force {
                 let sha256 = self.sha256_read(segment.addr, segment.size())?;
                 if sha256 == &local_hash[..] {
-                    log::info!("Skip segment addr: {:x} size: {} sha256 matches", segment.addr, segment.size());
-                    continue
+                    log::info!(
+                        "Skip segment addr: {:x} size: {} sha256 matches",
+                        segment.addr,
+                        segment.size()
+                    );
+                    continue;
                 }
             }
 
-            log::info!("Erase flash addr: {:x} size: {}", segment.addr, segment.size());
+            log::info!(
+                "Erase flash addr: {:x} size: {}",
+                segment.addr,
+                segment.size()
+            );
             self.flash_erase(segment.addr, segment.addr + segment.size())?;
 
             let mut reader = Cursor::new(&segment.data);
             let mut cur = segment.addr;
-            
+
             let start = Instant::now();
             log::info!("Program flash... {:x}", local_hash);
             loop {
@@ -68,11 +88,15 @@ impl Flasher {
                 // log::trace!("program {:x} {:x}", cur, size);
                 cur += size;
                 if size == 0 {
-                    break
+                    break;
                 }
             }
             let elapsed = start.elapsed();
-            log::info!("Program done {:?} {}/s", elapsed, HumanBytes((segment.size() as f64 / elapsed.as_millis() as f64 * 1000.0) as u64));
+            log::info!(
+                "Program done {:?} {}/s",
+                elapsed,
+                HumanBytes((segment.size() as f64 / elapsed.as_millis() as f64 * 1000.0) as u64)
+            );
 
             let sha256 = self.sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
@@ -82,7 +106,10 @@ impl Flasher {
         Ok(())
     }
 
-    pub fn check_segments<'a>(&'a mut self, segments: impl Iterator<Item=RomSegment<'a>>) -> Result<(), Error> {
+    pub fn check_segments<'a>(
+        &'a mut self,
+        segments: impl Iterator<Item = RomSegment<'a>>,
+    ) -> Result<(), Error> {
         self.load_eflash_loader()?;
         self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
         self.handshake()?;
@@ -92,7 +119,12 @@ impl Flasher {
 
             let sha256 = self.sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
-                log::warn!("{:x} sha256 not match: {:x?} != {:x?}", segment.addr, sha256, local_hash);
+                log::warn!(
+                    "{:x} sha256 not match: {:x?} != {:x?}",
+                    segment.addr,
+                    sha256,
+                    local_hash
+                );
             } else {
                 log::info!("{:x} sha256 match", segment.addr);
             }
@@ -123,7 +155,7 @@ impl Flasher {
     }
 
     pub fn load_eflash_loader(&mut self) -> Result<(), Error> {
-        let input =  self.chip.get_eflash_loader().to_vec();
+        let input = self.chip.get_eflash_loader().to_vec();
         let len = input.len();
         let mut reader = Cursor::new(input);
         self.load_boot_header(&mut reader)?;
@@ -134,11 +166,15 @@ impl Flasher {
         loop {
             let size = self.load_segment_data(&mut reader)?;
             if size == 0 {
-                break
+                break;
             }
         }
         let elapsed = start.elapsed();
-        log::info!("Finished {:?} {}/s", elapsed, HumanBytes((len as f64 / elapsed.as_millis() as f64 * 1000.0) as u64));
+        log::info!(
+            "Finished {:?} {}/s",
+            elapsed,
+            HumanBytes((len as f64 / elapsed.as_millis() as f64 * 1000.0) as u64)
+        );
 
         self.check_image()?;
         self.run_image()?;
@@ -152,10 +188,7 @@ impl Flasher {
     }
 
     fn sha256_read(&mut self, addr: u32, len: u32) -> Result<[u8; 32], Error> {
-        let mut req = protocol::Sha256Read {
-            addr,
-            len,
-        };
+        let mut req = protocol::Sha256Read { addr, len };
         req.update()?;
         self.connection.write_all(&req.to_bytes()?)?;
         self.connection.flush()?;
@@ -170,7 +203,7 @@ impl Flasher {
         let mut data = vec![0u8; 4000];
         let size = reader.read(&mut data)?;
         if size == 0 {
-            return Ok(0)
+            return Ok(0);
         }
         data.truncate(size);
         let mut req = protocol::FlashProgram {
@@ -187,10 +220,7 @@ impl Flasher {
     }
 
     fn flash_erase(&mut self, start: u32, end: u32) -> Result<(), Error> {
-        let mut req = protocol::FlashErase {
-            start,
-            end,
-        };
+        let mut req = protocol::FlashErase { start, end };
         req.update()?;
         self.connection.write_all(&req.to_bytes()?)?;
         self.connection.flush()?;
@@ -241,7 +271,11 @@ impl Flasher {
         let resp = self.connection.read_response(18)?;
 
         if &resp[2..] != req.segment_header {
-            log::warn!("Segment header not match req:{:x?} != resp:{:x?}", req.segment_header, &resp[2..])
+            log::warn!(
+                "Segment header not match req:{:x?} != resp:{:x?}",
+                req.segment_header,
+                &resp[2..]
+            )
         }
 
         Ok(())
@@ -251,7 +285,7 @@ impl Flasher {
         let mut segment_data = vec![0u8; 4000];
         let size = reader.read(&mut segment_data)?;
         if size == 0 {
-            return Ok(0)
+            return Ok(0);
         }
         segment_data.truncate(size);
         let mut req = protocol::LoadSegmentData {
@@ -279,15 +313,14 @@ impl Flasher {
             .with_timeout(Duration::from_millis(200), |connection| {
                 let len = connection.calc_duration_length(Duration::from_millis(5));
                 log::trace!("5ms send count {}", len);
-                let data: Vec<u8> = std::iter::repeat(0x55u8)
-                    .take(len).collect();
+                let data: Vec<u8> = std::iter::repeat(0x55u8).take(len).collect();
                 let start = Instant::now();
                 connection.write_all(&data)?;
                 connection.flush()?;
                 log::trace!("handshake sent elapsed {:?}", start.elapsed());
                 for _ in 0..10 {
                     if connection.read_response(0).is_ok() {
-                        return Ok(())
+                        return Ok(());
                     }
                 }
                 Err(Error::Timeout)
@@ -308,7 +341,6 @@ impl Flasher {
         }
         Err(Error::ConnectionFailed)
     }
-
 }
 
 mod protocol {

@@ -1,16 +1,15 @@
-use serde::Deserialize;
-use deku::prelude::*;
-use std::io::Cursor;
 use crate::Error;
-use byteorder::{ReadBytesExt, NativeEndian};
-use sha2::{Sha256, Digest};
+use byteorder::{NativeEndian, ReadBytesExt};
+use deku::prelude::*;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::io::Cursor;
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct BootHeaderCfgFile {
     #[serde(rename = "BOOTHEADER_CFG")]
     pub boot_header_cfg: BootHeaderCfg,
 }
-
 
 #[derive(Debug, Deserialize, DekuWrite, Default, Clone)]
 pub struct FlashCfg {
@@ -214,21 +213,21 @@ pub struct BootHeaderCfg {
 impl FlashCfg {
     fn checksum(&self) -> u32 {
         let data = self.to_bytes().unwrap();
-        crc::crc32::checksum_ieee(&data[4..data.len()-4])
+        crc::crc32::checksum_ieee(&data[4..data.len() - 4])
     }
 }
 
 impl ClkCfg {
     fn checksum(&self) -> u32 {
         let data = self.to_bytes().unwrap();
-        crc::crc32::checksum_ieee(&data[4..data.len()-4])
+        crc::crc32::checksum_ieee(&data[4..data.len() - 4])
     }
 }
 
 impl BootHeaderCfg {
     fn checksum(&self) -> u32 {
         let data = self.to_bytes().unwrap();
-        crc::crc32::checksum_ieee(&data[0..data.len()-4])
+        crc::crc32::checksum_ieee(&data[0..data.len() - 4])
     }
     fn update_sha256(&mut self, hash: &[u8]) -> Result<(), Error> {
         let mut reader = Cursor::new(hash);

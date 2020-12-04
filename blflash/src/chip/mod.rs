@@ -1,6 +1,6 @@
 pub mod bl602;
+pub use crate::elf::{CodeSegment, FirmwareImage, RomSegment};
 pub use bl602::Bl602;
-pub use crate::elf::{FirmwareImage, CodeSegment, RomSegment};
 
 pub trait Chip {
     fn get_eflash_loader(&self) -> &[u8];

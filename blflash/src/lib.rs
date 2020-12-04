@@ -1,11 +1,11 @@
-mod config;
-mod flasher;
-mod connection;
 pub mod chip;
-mod error;
-pub mod image;
+mod config;
+mod connection;
 pub mod elf;
+mod error;
+mod flasher;
+pub mod image;
 
 pub use config::Config;
-pub use flasher::Flasher;
 pub use error::{Error, RomError};
+pub use flasher::Flasher;

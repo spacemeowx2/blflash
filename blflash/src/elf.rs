@@ -102,8 +102,7 @@ impl<'a> RomSegment<'a> {
             data: Cow::Borrowed(data),
         }
     }
-    pub fn from_code_segment(addr: u32, code_segment: CodeSegment<'a>) -> RomSegment<'a>
-    {
+    pub fn from_code_segment(addr: u32, code_segment: CodeSegment<'a>) -> RomSegment<'a> {
         Self {
             addr,
             data: Cow::Borrowed(code_segment.data),

@@ -1,11 +1,15 @@
 use std::fs::read;
 
-use blflash::{Config, Flasher, Error, chip::bl602::{self, Bl602}, image::BootHeaderCfgFile};
+use blflash::{
+    chip::bl602::{self, Bl602},
+    image::BootHeaderCfgFile,
+    Config, Error, Flasher,
+};
+use env_logger::Env;
 use main_error::MainError;
 use serial::BaudRate;
-use env_logger::Env;
-use structopt::StructOpt;
 use std::path::PathBuf;
+use structopt::StructOpt;
 
 #[derive(StructOpt)]
 struct FlashOpt {
@@ -64,36 +68,24 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
         let BootHeaderCfgFile { boot_header_cfg } = toml::from_slice(&boot_header_cfg)?;
 
         let bin = read(&opt.image)?;
-        let segments = chip.with_boot2(
-            partition_cfg,
-            boot_header_cfg,
-            &bin,
-        )?;
-        let mut flasher = Flasher::connect(
-            chip,
-            serial,
-            Some(BaudRate::Baud115200)
-        )?;
-    
+        let segments = chip.with_boot2(partition_cfg, boot_header_cfg, &bin)?;
+        let mut flasher = Flasher::connect(chip, serial, Some(BaudRate::Baud115200))?;
+
         log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
         log::trace!("Boot info: {:x?}", flasher.boot_info());
 
         flasher.load_segments(opt.force, segments.into_iter())?;
-    
+
         flasher.reset()?;
     } else {
-        let mut flasher = Flasher::connect(
-            chip,
-            serial,
-            Some(BaudRate::Baud115200)
-        )?;
-    
+        let mut flasher = Flasher::connect(chip, serial, Some(BaudRate::Baud115200))?;
+
         log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
         log::trace!("Boot info: {:x?}", flasher.boot_info());
 
         let input_bytes = read(&opt.image)?;
         flasher.load_elf_to_flash(opt.force, &input_bytes)?;
-    
+
         flasher.reset()?;
     }
 
@@ -103,11 +95,7 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
 
 fn check(opt: CheckOpt) -> Result<(), Error> {
     let serial = serial::open(&opt.port)?;
-    let mut flasher = Flasher::connect(
-        Bl602,
-        serial,
-        Some(BaudRate::Baud115200),
-    )?;
+    let mut flasher = Flasher::connect(Bl602, serial, Some(BaudRate::Baud115200))?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
@@ -122,12 +110,11 @@ fn check(opt: CheckOpt) -> Result<(), Error> {
 fn main(args: Opt) -> Result<(), MainError> {
     env_logger::Builder::from_env(Env::default().default_filter_or("blflash=trace")).init();
     let _config = Config::load();
-    
+
     match args {
         Opt::Flash(opt) => flash(opt)?,
         Opt::Check(opt) => check(opt)?,
     };
-
 
     Ok(())
 }

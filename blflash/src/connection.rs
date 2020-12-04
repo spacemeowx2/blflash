@@ -1,8 +1,8 @@
-use std::io::{Read, Write, Cursor};
+use crate::{Error, RomError};
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::io::{Cursor, Read, Write};
 use std::thread::sleep;
 use std::time::Duration;
-use crate::{Error, RomError};
-use byteorder::{ReadBytesExt, LittleEndian};
 
 use serial::{BaudRate, SerialPort, SerialPortSettings};
 
@@ -85,14 +85,14 @@ impl Connection {
                 } else {
                     Ok(vec![])
                 }
-            },
+            }
             // FL
             [0x46, 0x4c] => {
                 let code = self.read_exact(2)?;
                 let mut reader = Cursor::new(code);
                 let code = reader.read_u16::<LittleEndian>()?;
                 Err(Error::RomError(RomError::from(code)))
-            },
+            }
             e => {
                 log::trace!("read_response err: {:x?}", e);
                 Err(Error::RespError)

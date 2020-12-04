@@ -1,8 +1,7 @@
-use serde::Deserialize;
 use deku::prelude::*;
-use std::iter;
+use serde::Deserialize;
 use std::io::Write;
-
+use std::iter;
 
 #[derive(Debug, Deserialize, DekuWrite, Default)]
 #[deku(magic = b"\x42\x46\x50\x54\x00\x00")]
@@ -52,17 +51,14 @@ impl PartitionCfg {
     }
     fn checksum(&self) -> u32 {
         let data = self.to_bytes().unwrap();
-        crc::crc32::checksum_ieee(&data[16..16+36*self.pt_entry.len()])
+        crc::crc32::checksum_ieee(&data[16..16 + 36 * self.pt_entry.len()])
     }
 }
 
 impl Entry {
-    fn write_name(
-        name: &str,
-        output: &mut BitVec<Msb0, u8>,
-    ) -> Result<(), DekuError> {
+    fn write_name(name: &str, output: &mut BitVec<Msb0, u8>) -> Result<(), DekuError> {
         if name.len() > 8 {
-            return Err(DekuError::Unexpected("name too long".to_string()))
+            return Err(DekuError::Unexpected("name too long".to_string()));
         }
         let bytes = name
             .bytes()

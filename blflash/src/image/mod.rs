@@ -1,5 +1,5 @@
 mod bootheader;
 mod partition;
 
+pub use bootheader::{BootHeaderCfg, BootHeaderCfgFile};
 pub use partition::PartitionCfg;
-pub use bootheader::{BootHeaderCfgFile, BootHeaderCfg};

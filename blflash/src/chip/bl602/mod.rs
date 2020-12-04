@@ -1,5 +1,8 @@
 use super::{Chip, CodeSegment, RomSegment};
-use crate::{Error, image::{PartitionCfg, BootHeaderCfg}};
+use crate::{
+    image::{BootHeaderCfg, PartitionCfg},
+    Error,
+};
 use deku::prelude::*;
 
 pub const DEFAULT_PARTITION_CFG: &'static [u8] = include_bytes!("cfg/partition_cfg_2M.toml");
@@ -50,7 +53,10 @@ impl Chip for Bl602 {
 
     fn get_flash_segment<'a>(&self, code_segment: CodeSegment<'a>) -> Option<RomSegment<'a>> {
         if self.addr_is_flash(code_segment.addr) {
-            Some(RomSegment::from_code_segment(code_segment.addr - ROM_START, code_segment))
+            Some(RomSegment::from_code_segment(
+                code_segment.addr - ROM_START,
+                code_segment,
+            ))
         } else {
             None
         }
