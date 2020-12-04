@@ -1,4 +1,4 @@
-# blflash
+# blflash (WIP)
 
 BL602 serial flasher
 
