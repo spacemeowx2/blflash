@@ -1,5 +1,5 @@
 use crate::{Error, RomError};
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use std::io::{Cursor, Read, Write};
 use std::thread::sleep;
 use std::time::Duration;
@@ -10,15 +10,19 @@ pub const DEFAULT_BAUDRATE: BaudRate = BaudRate::Baud115200;
 
 pub struct Connection {
     serial: Box<dyn SerialPort>,
-    baud_rate: BaudRate,
+    baud_rate: Option<BaudRate>,
 }
 
 impl Connection {
     pub fn new(serial: impl SerialPort + 'static) -> Self {
         Connection {
             serial: Box::new(serial),
-            baud_rate: DEFAULT_BAUDRATE,
+            baud_rate: None,
         }
+    }
+
+    pub fn into_inner(self) -> Box<dyn SerialPort> {
+        self.serial
     }
 
     pub fn reset(&mut self) -> Result<(), Error> {
@@ -51,7 +55,7 @@ impl Connection {
     }
 
     pub fn set_baud(&mut self, speed: BaudRate) -> Result<(), Error> {
-        self.baud_rate = speed;
+        self.baud_rate = Some(speed);
         self.serial
             .reconfigure(&|setup: &mut dyn SerialPortSettings| setup.set_baud_rate(speed))?;
         Ok(())
@@ -73,6 +77,11 @@ impl Connection {
         let mut buf = vec![0u8; len];
         self.serial.read_exact(&mut buf)?;
         Ok(buf)
+    }
+
+    pub fn read_response_with_payload(&mut self) -> Result<Vec<u8>, Error> {
+        let len = LittleEndian::read_u16(&self.read_response(2)?);
+        self.read_exact(len as usize)
     }
 
     pub fn read_response(&mut self, len: usize) -> Result<Vec<u8>, Error> {
@@ -101,7 +110,8 @@ impl Connection {
     }
 
     pub fn calc_duration_length(&mut self, duration: Duration) -> usize {
-        self.baud_rate.speed() / 10 / 1000 * (duration.as_millis() as usize)
+        self.baud_rate.unwrap_or(DEFAULT_BAUDRATE).speed() / 10 / 1000
+            * (duration.as_millis() as usize)
     }
 
     pub fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {

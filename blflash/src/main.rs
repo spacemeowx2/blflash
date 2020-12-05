@@ -1,21 +1,35 @@
-use std::fs::read;
-
 use blflash::{
-    chip::bl602::{self, Bl602},
+    chip::{
+        bl602::{self, Bl602},
+        Chip,
+    },
     image::BootHeaderCfgFile,
     Config, Error, Flasher,
 };
 use env_logger::Env;
 use main_error::MainError;
-use serial::BaudRate;
+use serial::{BaudRate, SerialPort};
+use std::fs::{read, File};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
-struct FlashOpt {
+struct Connection {
     /// Serial port
     #[structopt(short, long)]
     port: String,
+    /// Flash baud rate
+    #[structopt(short, long, default_value = "115200")]
+    baud_rate: usize,
+    /// Initial baud rate
+    #[structopt(long, default_value = "115200")]
+    initial_baud_rate: usize,
+}
+
+#[derive(StructOpt)]
+struct FlashOpt {
+    #[structopt(flatten)]
+    conn: Connection,
     /// Bin file
     #[structopt(parse(from_os_str))]
     image: PathBuf,
@@ -35,12 +49,26 @@ struct FlashOpt {
 
 #[derive(StructOpt)]
 struct CheckOpt {
-    /// Serial port
-    #[structopt(short, long)]
-    port: String,
+    #[structopt(flatten)]
+    conn: Connection,
     /// Bin file
     #[structopt(parse(from_os_str))]
     image: PathBuf,
+}
+
+#[derive(StructOpt)]
+struct DumpOpt {
+    #[structopt(flatten)]
+    conn: Connection,
+    /// Output file
+    #[structopt(parse(from_os_str))]
+    output: PathBuf,
+    /// start address
+    #[structopt(default_value = "0")]
+    start: u32,
+    /// end address
+    #[structopt(default_value = "1048576")]
+    end: u32,
 }
 
 #[derive(StructOpt)]
@@ -49,11 +77,29 @@ enum Opt {
     Flash(FlashOpt),
     /// Check if the device's flash matches the image
     Check(CheckOpt),
+    /// Dump the whole flash to a file
+    Dump(DumpOpt),
+}
+
+impl Connection {
+    fn open_serial(&self) -> Result<impl SerialPort, Error> {
+        let serial = serial::open(&self.port)?;
+        Ok(serial)
+    }
+    fn create_flasher(&self, chip: impl Chip + 'static) -> Result<Flasher, Error> {
+        let serial = self.open_serial()?;
+        Flasher::connect(
+            chip,
+            serial,
+            BaudRate::from_speed(self.initial_baud_rate),
+            BaudRate::from_speed(self.baud_rate),
+        )
+    }
 }
 
 fn flash(opt: FlashOpt) -> Result<(), Error> {
-    let serial = serial::open(&opt.port)?;
     let chip = Bl602;
+    let mut flasher = opt.conn.create_flasher(chip)?;
 
     if !opt.without_boot2 {
         let partition_cfg = opt
@@ -69,7 +115,6 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
 
         let bin = read(&opt.image)?;
         let segments = chip.with_boot2(partition_cfg, boot_header_cfg, &bin)?;
-        let mut flasher = Flasher::connect(chip, serial, Some(BaudRate::Baud115200))?;
 
         log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
         log::trace!("Boot info: {:x?}", flasher.boot_info());
@@ -78,8 +123,6 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
 
         flasher.reset()?;
     } else {
-        let mut flasher = Flasher::connect(chip, serial, Some(BaudRate::Baud115200))?;
-
         log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
         log::trace!("Boot info: {:x?}", flasher.boot_info());
 
@@ -90,12 +133,12 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
     }
 
     log::info!("Success");
+
     Ok(())
 }
 
 fn check(opt: CheckOpt) -> Result<(), Error> {
-    let serial = serial::open(&opt.port)?;
-    let mut flasher = Flasher::connect(Bl602, serial, Some(BaudRate::Baud115200))?;
+    let mut flasher = opt.conn.create_flasher(Bl602)?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
@@ -106,14 +149,31 @@ fn check(opt: CheckOpt) -> Result<(), Error> {
     Ok(())
 }
 
+fn dump(opt: DumpOpt) -> Result<(), Error> {
+    let mut flasher = opt.conn.create_flasher(Bl602)?;
+
+    log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
+    log::trace!("Boot info: {:x?}", flasher.boot_info());
+
+    let mut output = File::create(opt.output)?;
+    flasher.dump_flash(opt.start..opt.end, &mut output)?;
+
+    log::info!("Success");
+
+    Ok(())
+}
+
 #[paw::main]
 fn main(args: Opt) -> Result<(), MainError> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("blflash=trace")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("blflash=trace"))
+        .format_timestamp(None)
+        .init();
     let _config = Config::load();
 
     match args {
         Opt::Flash(opt) => flash(opt)?,
         Opt::Check(opt) => check(opt)?,
+        Opt::Dump(opt) => dump(opt)?,
     };
 
     Ok(())

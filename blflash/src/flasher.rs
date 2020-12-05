@@ -1,45 +1,57 @@
 use crate::chip::Chip;
 use crate::elf::FirmwareImage;
 use crate::Error;
-use crate::{
-    connection::{Connection, DEFAULT_BAUDRATE},
-    elf::RomSegment,
-};
+use crate::{connection::Connection, elf::RomSegment};
 use deku::prelude::*;
-use indicatif::HumanBytes;
+use indicatif::{HumanBytes, ProgressBar, ProgressStyle};
 use serial::{BaudRate, SerialPort};
 use sha2::{Digest, Sha256};
-use std::thread::sleep;
 use std::{
-    io::{Cursor, Read},
+    io::{Cursor, Read, Write},
     time::{Duration, Instant},
 };
+use std::{ops::Range, thread::sleep};
+
+fn get_bar(len: u64) -> ProgressBar {
+    let bar = ProgressBar::new(len);
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .template("  {wide_bar} {bytes}/{total_bytes} {bytes_per_sec} {eta}  ")
+            .progress_chars("#>-"),
+    );
+    bar
+}
 
 pub struct Flasher {
     connection: Connection,
     boot_info: protocol::BootInfo,
     chip: Box<dyn Chip>,
+    flash_speed: BaudRate,
 }
 
 impl Flasher {
     pub fn connect(
         chip: impl Chip + 'static,
         serial: impl SerialPort + 'static,
-        speed: Option<BaudRate>,
+        initial_speed: BaudRate,
+        flash_speed: BaudRate,
     ) -> Result<Self, Error> {
         let mut flasher = Flasher {
             connection: Connection::new(serial),
             boot_info: protocol::BootInfo::default(),
             chip: Box::new(chip),
+            flash_speed,
         };
-        flasher
-            .connection
-            .set_baud(speed.unwrap_or(DEFAULT_BAUDRATE))?;
+        flasher.connection.set_baud(initial_speed)?;
         flasher.start_connection()?;
         flasher.connection.set_timeout(Duration::from_secs(10))?;
         flasher.boot_info = flasher.get_boot_info()?;
 
         Ok(flasher)
+    }
+
+    pub fn into_inner(self) -> Connection {
+        self.connection
     }
 
     pub fn boot_info(&self) -> &protocol::BootInfo {
@@ -52,8 +64,6 @@ impl Flasher {
         segments: impl Iterator<Item = RomSegment<'a>>,
     ) -> Result<(), Error> {
         self.load_eflash_loader()?;
-        self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
-        self.handshake()?;
 
         for segment in segments {
             let local_hash = Sha256::digest(&segment.data[0..segment.size() as usize]);
@@ -83,14 +93,17 @@ impl Flasher {
 
             let start = Instant::now();
             log::info!("Program flash... {:x}", local_hash);
+            let pb = get_bar(segment.size() as u64);
             loop {
                 let size = self.flash_program(cur, &mut reader)?;
                 // log::trace!("program {:x} {:x}", cur, size);
                 cur += size;
+                pb.inc(size as u64);
                 if size == 0 {
                     break;
                 }
             }
+            pb.finish_and_clear();
             let elapsed = start.elapsed();
             log::info!(
                 "Program done {:?} {}/s",
@@ -111,8 +124,6 @@ impl Flasher {
         segments: impl Iterator<Item = RomSegment<'a>>,
     ) -> Result<(), Error> {
         self.load_eflash_loader()?;
-        self.connection.set_baud(BaudRate::BaudOther(2_000_000))?;
-        self.handshake()?;
 
         for segment in segments {
             let local_hash = Sha256::digest(&segment.data[0..segment.size() as usize]);
@@ -154,6 +165,23 @@ impl Flasher {
         Ok(())
     }
 
+    pub fn dump_flash(&mut self, range: Range<u32>, mut writer: impl Write) -> Result<(), Error> {
+        self.load_eflash_loader()?;
+
+        const BLOCK_SIZE: usize = 4096;
+        let mut cur = range.start;
+        let pb = get_bar(range.len() as u64);
+        while cur < range.end {
+            let data = self.flash_read(cur, (range.end - cur).min(BLOCK_SIZE as u32))?;
+            writer.write_all(&data)?;
+            cur += data.len() as u32;
+            pb.inc(data.len() as u64);
+        }
+        pb.finish_and_clear();
+
+        Ok(())
+    }
+
     pub fn load_eflash_loader(&mut self) -> Result<(), Error> {
         let input = self.chip.get_eflash_loader().to_vec();
         let len = input.len();
@@ -163,12 +191,15 @@ impl Flasher {
 
         let start = Instant::now();
         log::info!("Sending eflash_loader...");
+        let pb = get_bar(len as u64);
         loop {
             let size = self.load_segment_data(&mut reader)?;
+            pb.inc(size as u64);
             if size == 0 {
                 break;
             }
         }
+        pb.finish_and_clear();
         let elapsed = start.elapsed();
         log::info!(
             "Finished {:?} {}/s",
@@ -179,6 +210,9 @@ impl Flasher {
         self.check_image()?;
         self.run_image()?;
         sleep(Duration::from_millis(200));
+        // TODO configurable
+        self.connection.set_baud(self.flash_speed)?;
+        self.handshake()?;
 
         Ok(())
     }
@@ -197,6 +231,16 @@ impl Flasher {
         let (_, data) = protocol::Sha256ReadResp::from_bytes((&data, 0))?;
 
         Ok(data.digest)
+    }
+
+    fn flash_read(&mut self, addr: u32, size: u32) -> Result<Vec<u8>, Error> {
+        let mut req = protocol::FlashRead { addr, size };
+        req.update()?;
+        self.connection.write_all(&req.to_bytes()?)?;
+        self.connection.flush()?;
+        let data = self.connection.read_response_with_payload()?;
+
+        Ok(data)
     }
 
     fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
@@ -405,6 +449,21 @@ mod protocol {
         fn len(&self) -> u16 {
             self.data.len() as u16 + 4
         }
+    }
+
+    #[derive(Debug, DekuWrite, Default)]
+    #[deku(magic = b"\x32\x00\x08\x00", endian = "little")]
+    pub struct FlashRead {
+        pub addr: u32,
+        pub size: u32,
+    }
+
+    #[derive(Debug, DekuRead)]
+    #[deku(magic = b"\x32\x00\x08\x00", endian = "little")]
+    pub struct FlashReadResp {
+        pub len: u16,
+        #[deku(count = "len")]
+        pub data: Vec<u8>,
     }
 
     #[derive(Debug, DekuWrite, Default)]
