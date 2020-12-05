@@ -26,9 +26,9 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target/
-          key: ${{ matrix.os }}-stable-target
+          key: ${{ matrix.os }}-stable-target-v1
           restore-keys: |
-            ${{ matrix.os }}-stable-target
+            ${{ matrix.os }}-stable-target-v1
       - name: Setup toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -64,9 +64,9 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target/
-          key: ${{ matrix.os }}-stable-target
+          key: ${{ matrix.target }}-stable-target-v1
           restore-keys: |
-            ${{ matrix.os }}-stable-target
+            ${{ matrix.target }}-stable-target-v1
       - name: Setup toolchain
         uses: actions-rs/toolchain@v1
         with:
