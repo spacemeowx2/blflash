@@ -29,15 +29,16 @@ jobs:
           key: ${{ matrix.os }}-stable-target
           restore-keys: |
             ${{ matrix.os }}-stable-target
-      - uses: actions-rs/toolchain@v1
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
 
-      - uses: actions-rs/cargo@v1
+      - name: Build release
+        uses: actions-rs/cargo@v1
         with:
-          use-cross: true
           command: build
           args: --release
 
@@ -66,12 +67,14 @@ jobs:
           key: ${{ matrix.os }}-stable-target
           restore-keys: |
             ${{ matrix.os }}-stable-target
-      - uses: actions-rs/toolchain@v1
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
-      - uses: actions-rs/cargo@v1
+      - name: Build release
+        uses: actions-rs/cargo@v1
         with:
           use-cross: true
           command: build
