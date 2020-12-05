@@ -21,7 +21,25 @@ impl Bl602 {
     fn addr_is_flash(&self, addr: u32) -> bool {
         addr >= ROM_START && addr < ROM_END
     }
-    pub fn with_boot2(
+}
+
+impl Chip for Bl602 {
+    fn get_eflash_loader(&self) -> &[u8] {
+        EFLASH_LOADER
+    }
+
+    fn get_flash_segment<'a>(&self, code_segment: CodeSegment<'a>) -> Option<RomSegment<'a>> {
+        if self.addr_is_flash(code_segment.addr) {
+            Some(RomSegment::from_code_segment(
+                code_segment.addr - ROM_START,
+                code_segment,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn with_boot2(
         &self,
         mut partition_cfg: PartitionCfg,
         mut bootheader_cfg: BootHeaderCfg,
@@ -43,22 +61,5 @@ impl Bl602 {
         ];
 
         Ok(segments)
-    }
-}
-
-impl Chip for Bl602 {
-    fn get_eflash_loader(&self) -> &[u8] {
-        EFLASH_LOADER
-    }
-
-    fn get_flash_segment<'a>(&self, code_segment: CodeSegment<'a>) -> Option<RomSegment<'a>> {
-        if self.addr_is_flash(code_segment.addr) {
-            Some(RomSegment::from_code_segment(
-                code_segment.addr - ROM_START,
-                code_segment,
-            ))
-        } else {
-            None
-        }
     }
 }

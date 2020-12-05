@@ -1,5 +1,4 @@
 use crate::chip::Chip;
-use crate::elf::FirmwareImage;
 use crate::Error;
 use crate::{connection::Connection, elf::RomSegment};
 use deku::prelude::*;
@@ -143,28 +142,6 @@ impl Flasher {
         Ok(())
     }
 
-    pub fn load_elf_to_flash(&mut self, force: bool, elf_data: &[u8]) -> Result<(), Error> {
-        let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
-        let segs = image
-            .segments()
-            .filter_map(|segment| self.chip.get_flash_segment(segment))
-            .collect::<Vec<_>>();
-
-        self.load_segments(force, segs.into_iter())?;
-        Ok(())
-    }
-
-    pub fn check_elf_to_flash(&mut self, elf_data: &[u8]) -> Result<(), Error> {
-        let image = FirmwareImage::from_data(elf_data).map_err(|_| Error::InvalidElf)?;
-        let segs = image
-            .segments()
-            .filter_map(|segment| self.chip.get_flash_segment(segment))
-            .collect::<Vec<_>>();
-
-        self.check_segments(segs.into_iter())?;
-        Ok(())
-    }
-
     pub fn dump_flash(&mut self, range: Range<u32>, mut writer: impl Write) -> Result<(), Error> {
         self.load_eflash_loader()?;
 
@@ -209,10 +186,11 @@ impl Flasher {
 
         self.check_image()?;
         self.run_image()?;
-        sleep(Duration::from_millis(200));
-        // TODO configurable
+        sleep(Duration::from_millis(500));
         self.connection.set_baud(self.flash_speed)?;
         self.handshake()?;
+
+        log::info!("Entered eflash_loader");
 
         Ok(())
     }
@@ -362,11 +340,14 @@ impl Flasher {
                 connection.write_all(&data)?;
                 connection.flush()?;
                 log::trace!("handshake sent elapsed {:?}", start.elapsed());
-                for _ in 0..10 {
+                sleep(Duration::from_millis(200));
+
+                for _ in 0..5 {
                     if connection.read_response(0).is_ok() {
                         return Ok(());
                     }
                 }
+
                 Err(Error::Timeout)
             })
     }

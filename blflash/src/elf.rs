@@ -4,6 +4,8 @@ use std::cmp::Ordering;
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::ElfFile;
 
+use crate::chip::Chip;
+
 pub struct FirmwareImage<'a> {
     pub entry: u32,
     pub elf: ElfFile<'a>,
@@ -40,6 +42,22 @@ impl<'a> FirmwareImage<'a> {
                 };
                 Some(CodeSegment { addr, data, size })
             })
+    }
+    pub fn to_flash_bin(&self, chip: &dyn Chip) -> Vec<u8> {
+        let segs = self
+            .segments()
+            .filter_map(|segment| chip.get_flash_segment(segment))
+            .collect::<Vec<_>>();
+        let size = segs
+            .iter()
+            .fold(0, |len, i| len.max(i.addr + i.data.len() as u32));
+
+        let mut bin = Vec::new();
+        bin.resize(size as usize, 0xFF);
+        for s in segs {
+            bin[s.addr as usize..s.addr as usize + s.data.len()].copy_from_slice(&s.data);
+        }
+        bin
     }
 }
 
