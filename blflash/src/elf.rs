@@ -1,5 +1,8 @@
-use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::{
+    borrow::Cow,
+    io::{Cursor, Write},
+};
 
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::ElfFile;
@@ -43,21 +46,18 @@ impl<'a> FirmwareImage<'a> {
                 Some(CodeSegment { addr, data, size })
             })
     }
-    pub fn to_flash_bin(&self, chip: &dyn Chip) -> Vec<u8> {
-        let segs = self
-            .segments()
-            .filter_map(|segment| chip.get_flash_segment(segment))
-            .collect::<Vec<_>>();
-        let size = segs
-            .iter()
-            .fold(0, |len, i| len.max(i.addr + i.data.len() as u32));
+    pub fn to_flash_bin(&self, _chip: &dyn Chip) -> Vec<u8> {
+        // TODO: why it works???
+        let segs = self.segments().collect::<Vec<_>>();
 
-        let mut bin = Vec::new();
-        bin.resize(size as usize, 0xFF);
+        let bin = Vec::new();
+        let mut writer = Cursor::new(bin);
+
         for s in segs {
-            bin[s.addr as usize..s.addr as usize + s.data.len()].copy_from_slice(&s.data);
+            writer.write_all(&s.data).unwrap();
         }
-        bin
+
+        writer.into_inner()
     }
 }
 

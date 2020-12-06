@@ -243,7 +243,7 @@ impl BootHeaderCfg {
     }
     pub fn make_image(&mut self, offset: usize, mut image: Vec<u8>) -> Result<Vec<u8>, Error> {
         let binlen = ((image.len() + 15) / 16) * 16;
-        image.resize(binlen, 0);
+        image.resize(binlen, 0xFF);
         let hash = Sha256::digest(&image);
         self.update_sha256(&hash[..])?;
         self.boot_cfg.img_len = image.len() as u32;
