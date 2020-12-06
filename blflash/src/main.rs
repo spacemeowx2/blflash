@@ -9,7 +9,7 @@ use blflash::{
 };
 use env_logger::Env;
 use main_error::MainError;
-use serial::{BaudRate, SerialPort};
+use serial::{BaudRate, CharSize, FlowControl, Parity, SerialPort, SerialPortSettings, StopBits};
 use std::path::PathBuf;
 use std::{
     borrow::Cow,
@@ -95,7 +95,14 @@ enum Opt {
 
 impl Connection {
     fn open_serial(&self) -> Result<impl SerialPort, Error> {
-        let serial = serial::open(&self.port)?;
+        let mut serial = serial::open(&self.port)?;
+        serial.reconfigure(&|setup: &mut dyn SerialPortSettings| {
+            setup.set_char_size(CharSize::Bits8);
+            setup.set_stop_bits(StopBits::Stop1);
+            setup.set_parity(Parity::ParityNone);
+            setup.set_flow_control(FlowControl::FlowNone);
+            Ok(())
+        })?;
         Ok(serial)
     }
     fn create_flasher(&self, chip: impl Chip + 'static) -> Result<Flasher, Error> {
