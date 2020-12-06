@@ -1,7 +1,6 @@
 use crate::chip::Chip;
 use crate::Error;
 use crate::{connection::Connection, elf::RomSegment};
-use deku::prelude::*;
 use indicatif::{HumanBytes, ProgressBar, ProgressStyle};
 use serial::{BaudRate, SerialPort};
 use sha2::{Digest, Sha256};
@@ -200,25 +199,17 @@ impl Flasher {
     }
 
     fn sha256_read(&mut self, addr: u32, len: u32) -> Result<[u8; 32], Error> {
-        let mut req = protocol::Sha256Read { addr, len };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-
-        let data = self.connection.read_response(34)?;
-        let (_, data) = protocol::Sha256ReadResp::from_bytes((&data, 0))?;
-
-        Ok(data.digest)
+        Ok(self
+            .connection
+            .command(protocol::Sha256Read { addr, len })?
+            .digest)
     }
 
     fn flash_read(&mut self, addr: u32, size: u32) -> Result<Vec<u8>, Error> {
-        let mut req = protocol::FlashRead { addr, size };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-        let data = self.connection.read_response_with_payload()?;
-
-        Ok(data)
+        Ok(self
+            .connection
+            .command(protocol::FlashRead { addr, size })?
+            .data)
     }
 
     fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
@@ -228,75 +219,51 @@ impl Flasher {
             return Ok(0);
         }
         data.truncate(size);
-        let mut req = protocol::FlashProgram {
-            addr,
-            data,
-            ..Default::default()
-        };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
+
+        self.connection
+            .command(protocol::FlashProgram { addr, data })?;
 
         Ok(size as u32)
     }
 
     fn flash_erase(&mut self, start: u32, end: u32) -> Result<(), Error> {
-        let mut req = protocol::FlashErase { start, end };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
+        self.connection
+            .command(protocol::FlashErase { start, end })?;
 
         Ok(())
     }
 
     fn run_image(&mut self) -> Result<(), Error> {
-        self.connection.write_all(protocol::RUN_IMAGE)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
+        self.connection.command(protocol::RunImage {})?;
         Ok(())
     }
 
     fn check_image(&mut self) -> Result<(), Error> {
-        self.connection.write_all(protocol::CHECK_IMAGE)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
+        self.connection.command(protocol::CheckImage {})?;
         Ok(())
     }
 
     fn load_boot_header(&mut self, reader: &mut impl Read) -> Result<(), Error> {
         let mut boot_header = vec![0u8; protocol::LOAD_BOOT_HEADER_LEN];
         reader.read_exact(&mut boot_header)?;
-        let mut req = protocol::LoadBootHeader {
-            boot_header,
-            ..Default::default()
-        };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
-
+        self.connection
+            .command(protocol::LoadBootHeader { boot_header })?;
         Ok(())
     }
 
     fn load_segment_header(&mut self, reader: &mut impl Read) -> Result<(), Error> {
         let mut segment_header = vec![0u8; protocol::LOAD_SEGMENT_HEADER_LEN];
         reader.read_exact(&mut segment_header)?;
-        let mut req = protocol::LoadSegmentHeader {
-            segment_header,
-            ..Default::default()
-        };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-        let resp = self.connection.read_response(18)?;
 
-        if &resp[2..] != req.segment_header {
+        let resp = self.connection.command(protocol::LoadSegmentHeaderReq {
+            segment_header: segment_header.clone(),
+        })?;
+
+        if resp.data != segment_header {
             log::warn!(
                 "Segment header not match req:{:x?} != resp:{:x?}",
-                req.segment_header,
-                &resp[2..]
+                segment_header,
+                resp.data
             )
         }
 
@@ -310,24 +277,15 @@ impl Flasher {
             return Ok(0);
         }
         segment_data.truncate(size);
-        let mut req = protocol::LoadSegmentData {
-            segment_data,
-            ..Default::default()
-        };
-        req.update()?;
-        self.connection.write_all(&req.to_bytes()?)?;
-        self.connection.flush()?;
-        self.connection.read_response(0)?;
+
+        self.connection
+            .command(protocol::LoadSegmentData { segment_data })?;
 
         Ok(size as u32)
     }
 
     pub fn get_boot_info(&mut self) -> Result<protocol::BootInfo, Error> {
-        self.connection.write_all(protocol::GET_BOOT_INFO)?;
-        self.connection.flush()?;
-        let data = self.connection.read_response(22)?;
-        let (_, data) = protocol::BootInfo::from_bytes((&data, 0))?;
-        Ok(data)
+        self.connection.command(protocol::BootInfoReq {})
     }
 
     fn handshake(&mut self) -> Result<(), Error> {
@@ -369,86 +327,84 @@ impl Flasher {
 }
 
 mod protocol {
+    use crate::connection::{Command, Response};
     use deku::prelude::*;
 
-    pub const GET_BOOT_INFO: &[u8] = &[0x10, 0x00, 0x00, 0x00];
-    pub const CHECK_IMAGE: &[u8] = &[0x19, 0x00, 0x00, 0x00];
-    pub const RUN_IMAGE: &[u8] = &[0x1a, 0x00, 0x00, 0x00];
     pub const LOAD_BOOT_HEADER_LEN: usize = 176;
     pub const LOAD_SEGMENT_HEADER_LEN: usize = 16;
 
+    #[derive(Debug, DekuWrite, Default)]
+    pub struct CheckImage {}
+    impl_command!(0x19, CheckImage);
+
+    #[derive(Debug, DekuWrite, Default)]
+    pub struct RunImage {}
+    impl_command!(0x1a, RunImage);
+
+    #[derive(Debug, DekuWrite, Default)]
+    pub struct BootInfoReq {}
     #[derive(Debug, DekuRead, Default)]
-    #[deku(magic = b"\x14\x00")]
     pub struct BootInfo {
+        pub len: u16,
         pub bootrom_version: u32,
         pub otp_info: [u8; 16],
     }
+    impl_command!(0x10, BootInfoReq, BootInfo);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x11\x00", endian = "little")]
     pub struct LoadBootHeader {
-        #[deku(update = "self.boot_header.len()")]
-        pub boot_header_len: u16,
         // length must be 176
         pub boot_header: Vec<u8>,
     }
+    impl_command!(0x11, LoadBootHeader);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x17\x00", endian = "little")]
-    pub struct LoadSegmentHeader {
-        #[deku(update = "self.segment_header.len()")]
-        pub segment_header_len: u16,
+    pub struct LoadSegmentHeaderReq {
         // length must be 16
         pub segment_header: Vec<u8>,
     }
+    #[derive(Debug, DekuRead)]
+    pub struct LoadSegmentHeader {
+        pub len: u16,
+        #[deku(count = "len")]
+        pub data: Vec<u8>,
+    }
+    impl_command!(0x17, LoadSegmentHeaderReq, LoadSegmentHeader);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x18\x00", endian = "little")]
     pub struct LoadSegmentData {
-        #[deku(update = "self.segment_data.len()")]
-        pub segment_data_len: u16,
         pub segment_data: Vec<u8>,
     }
+    impl_command!(0x18, LoadSegmentData);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x30\x00\x08\x00", endian = "little")]
     pub struct FlashErase {
         pub start: u32,
         pub end: u32,
     }
+    impl_command!(0x30, FlashErase);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x31\x00", endian = "little")]
     pub struct FlashProgram {
-        #[deku(update = "self.len()")]
-        pub len: u16,
         pub addr: u32,
         pub data: Vec<u8>,
     }
-
-    impl FlashProgram {
-        fn len(&self) -> u16 {
-            self.data.len() as u16 + 4
-        }
-    }
+    impl_command!(0x31, FlashProgram);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x32\x00\x08\x00", endian = "little")]
     pub struct FlashRead {
         pub addr: u32,
         pub size: u32,
     }
-
     #[derive(Debug, DekuRead)]
-    #[deku(magic = b"\x32\x00\x08\x00", endian = "little")]
     pub struct FlashReadResp {
         pub len: u16,
         #[deku(count = "len")]
         pub data: Vec<u8>,
     }
+    impl_command!(0x32, FlashRead, FlashReadResp);
 
     #[derive(Debug, DekuWrite, Default)]
-    #[deku(magic = b"\x3d\x00\x08\x00", endian = "little")]
     pub struct Sha256Read {
         pub addr: u32,
         pub len: u32,
@@ -459,4 +415,5 @@ mod protocol {
     pub struct Sha256ReadResp {
         pub digest: [u8; 32],
     }
+    impl_command!(0x3d, Sha256Read, Sha256ReadResp);
 }
