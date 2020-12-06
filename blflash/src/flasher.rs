@@ -43,7 +43,7 @@ impl Flasher {
         flasher.connection.set_baud(initial_speed)?;
         flasher.start_connection()?;
         flasher.connection.set_timeout(Duration::from_secs(10))?;
-        flasher.boot_info = flasher.get_boot_info()?;
+        flasher.boot_info = flasher.boot_rom().get_boot_info()?;
 
         Ok(flasher)
     }
@@ -68,7 +68,9 @@ impl Flasher {
 
             // skip segment if the contents are matched
             if !force {
-                let sha256 = self.sha256_read(segment.addr, segment.size())?;
+                let sha256 = self
+                    .eflash_loader()
+                    .sha256_read(segment.addr, segment.size())?;
                 if sha256 == &local_hash[..] {
                     log::info!(
                         "Skip segment addr: {:x} size: {} sha256 matches",
@@ -84,7 +86,8 @@ impl Flasher {
                 segment.addr,
                 segment.size()
             );
-            self.flash_erase(segment.addr, segment.addr + segment.size())?;
+            self.eflash_loader()
+                .flash_erase(segment.addr, segment.addr + segment.size())?;
 
             let mut reader = Cursor::new(&segment.data);
             let mut cur = segment.addr;
@@ -93,7 +96,7 @@ impl Flasher {
             log::info!("Program flash... {:x}", local_hash);
             let pb = get_bar(segment.size() as u64);
             loop {
-                let size = self.flash_program(cur, &mut reader)?;
+                let size = self.eflash_loader().flash_program(cur, &mut reader)?;
                 // log::trace!("program {:x} {:x}", cur, size);
                 cur += size;
                 pb.inc(size as u64);
@@ -109,7 +112,9 @@ impl Flasher {
                 HumanBytes((segment.size() as f64 / elapsed.as_millis() as f64 * 1000.0) as u64)
             );
 
-            let sha256 = self.sha256_read(segment.addr, segment.size())?;
+            let sha256 = self
+                .eflash_loader()
+                .sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
                 log::warn!("sha256 not match: {:x?} != {:x?}", sha256, local_hash);
             }
@@ -126,7 +131,9 @@ impl Flasher {
         for segment in segments {
             let local_hash = Sha256::digest(&segment.data[0..segment.size() as usize]);
 
-            let sha256 = self.sha256_read(segment.addr, segment.size())?;
+            let sha256 = self
+                .eflash_loader()
+                .sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
                 log::warn!(
                     "{:x} sha256 not match: {:x?} != {:x?}",
@@ -148,7 +155,9 @@ impl Flasher {
         let mut cur = range.start;
         let pb = get_bar(range.len() as u64);
         while cur < range.end {
-            let data = self.flash_read(cur, (range.end - cur).min(BLOCK_SIZE as u32))?;
+            let data = self
+                .eflash_loader()
+                .flash_read(cur, (range.end - cur).min(BLOCK_SIZE as u32))?;
             writer.write_all(&data)?;
             cur += data.len() as u32;
             pb.inc(data.len() as u64);
@@ -162,14 +171,14 @@ impl Flasher {
         let input = self.chip.get_eflash_loader().to_vec();
         let len = input.len();
         let mut reader = Cursor::new(input);
-        self.load_boot_header(&mut reader)?;
-        self.load_segment_header(&mut reader)?;
+        self.boot_rom().load_boot_header(&mut reader)?;
+        self.boot_rom().load_segment_header(&mut reader)?;
 
         let start = Instant::now();
         log::info!("Sending eflash_loader...");
         let pb = get_bar(len as u64);
         loop {
-            let size = self.load_segment_data(&mut reader)?;
+            let size = self.boot_rom().load_segment_data(&mut reader)?;
             pb.inc(size as u64);
             if size == 0 {
                 break;
@@ -183,8 +192,8 @@ impl Flasher {
             HumanBytes((len as f64 / elapsed.as_millis() as f64 * 1000.0) as u64)
         );
 
-        self.check_image()?;
-        self.run_image()?;
+        self.boot_rom().check_image()?;
+        self.boot_rom().run_image()?;
         sleep(Duration::from_millis(500));
         self.connection.set_baud(self.flash_speed)?;
         self.handshake()?;
@@ -198,94 +207,12 @@ impl Flasher {
         Ok(self.connection.reset()?)
     }
 
-    fn sha256_read(&mut self, addr: u32, len: u32) -> Result<[u8; 32], Error> {
-        Ok(self
-            .connection
-            .command(protocol::Sha256Read { addr, len })?
-            .digest)
+    fn boot_rom(&mut self) -> BootRom {
+        BootRom(&mut self.connection)
     }
 
-    fn flash_read(&mut self, addr: u32, size: u32) -> Result<Vec<u8>, Error> {
-        Ok(self
-            .connection
-            .command(protocol::FlashRead { addr, size })?
-            .data)
-    }
-
-    fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
-        let mut data = vec![0u8; 4000];
-        let size = reader.read(&mut data)?;
-        if size == 0 {
-            return Ok(0);
-        }
-        data.truncate(size);
-
-        self.connection
-            .command(protocol::FlashProgram { addr, data })?;
-
-        Ok(size as u32)
-    }
-
-    fn flash_erase(&mut self, start: u32, end: u32) -> Result<(), Error> {
-        self.connection
-            .command(protocol::FlashErase { start, end })?;
-
-        Ok(())
-    }
-
-    fn run_image(&mut self) -> Result<(), Error> {
-        self.connection.command(protocol::RunImage {})?;
-        Ok(())
-    }
-
-    fn check_image(&mut self) -> Result<(), Error> {
-        self.connection.command(protocol::CheckImage {})?;
-        Ok(())
-    }
-
-    fn load_boot_header(&mut self, reader: &mut impl Read) -> Result<(), Error> {
-        let mut boot_header = vec![0u8; protocol::LOAD_BOOT_HEADER_LEN];
-        reader.read_exact(&mut boot_header)?;
-        self.connection
-            .command(protocol::LoadBootHeader { boot_header })?;
-        Ok(())
-    }
-
-    fn load_segment_header(&mut self, reader: &mut impl Read) -> Result<(), Error> {
-        let mut segment_header = vec![0u8; protocol::LOAD_SEGMENT_HEADER_LEN];
-        reader.read_exact(&mut segment_header)?;
-
-        let resp = self.connection.command(protocol::LoadSegmentHeaderReq {
-            segment_header: segment_header.clone(),
-        })?;
-
-        if resp.data != segment_header {
-            log::warn!(
-                "Segment header not match req:{:x?} != resp:{:x?}",
-                segment_header,
-                resp.data
-            )
-        }
-
-        Ok(())
-    }
-
-    fn load_segment_data(&mut self, reader: &mut impl Read) -> Result<u32, Error> {
-        let mut segment_data = vec![0u8; 4000];
-        let size = reader.read(&mut segment_data)?;
-        if size == 0 {
-            return Ok(0);
-        }
-        segment_data.truncate(size);
-
-        self.connection
-            .command(protocol::LoadSegmentData { segment_data })?;
-
-        Ok(size as u32)
-    }
-
-    pub fn get_boot_info(&mut self) -> Result<protocol::BootInfo, Error> {
-        self.connection.command(protocol::BootInfoReq {})
+    fn eflash_loader(&mut self) -> EflashLoader {
+        EflashLoader(&mut self.connection)
     }
 
     fn handshake(&mut self) -> Result<(), Error> {
@@ -323,6 +250,94 @@ impl Flasher {
             }
         }
         Err(Error::ConnectionFailed)
+    }
+}
+
+pub struct BootRom<'a>(&'a mut Connection);
+
+impl<'a> BootRom<'a> {
+    pub fn run_image(&mut self) -> Result<(), Error> {
+        self.0.command(protocol::RunImage {})?;
+        Ok(())
+    }
+
+    pub fn check_image(&mut self) -> Result<(), Error> {
+        self.0.command(protocol::CheckImage {})?;
+        Ok(())
+    }
+
+    pub fn load_boot_header(&mut self, reader: &mut impl Read) -> Result<(), Error> {
+        let mut boot_header = vec![0u8; protocol::LOAD_BOOT_HEADER_LEN];
+        reader.read_exact(&mut boot_header)?;
+        self.0.command(protocol::LoadBootHeader { boot_header })?;
+        Ok(())
+    }
+
+    pub fn load_segment_header(&mut self, reader: &mut impl Read) -> Result<(), Error> {
+        let mut segment_header = vec![0u8; protocol::LOAD_SEGMENT_HEADER_LEN];
+        reader.read_exact(&mut segment_header)?;
+
+        let resp = self.0.command(protocol::LoadSegmentHeaderReq {
+            segment_header: segment_header.clone(),
+        })?;
+
+        if resp.data != segment_header {
+            log::warn!(
+                "Segment header not match req:{:x?} != resp:{:x?}",
+                segment_header,
+                resp.data
+            )
+        }
+
+        Ok(())
+    }
+
+    pub fn load_segment_data(&mut self, reader: &mut impl Read) -> Result<u32, Error> {
+        let mut segment_data = vec![0u8; 4000];
+        let size = reader.read(&mut segment_data)?;
+        if size == 0 {
+            return Ok(0);
+        }
+        segment_data.truncate(size);
+
+        self.0.command(protocol::LoadSegmentData { segment_data })?;
+
+        Ok(size as u32)
+    }
+
+    pub fn get_boot_info(&mut self) -> Result<protocol::BootInfo, Error> {
+        self.0.command(protocol::BootInfoReq {})
+    }
+}
+
+pub struct EflashLoader<'a>(&'a mut Connection);
+
+impl<'a> EflashLoader<'a> {
+    pub fn sha256_read(&mut self, addr: u32, len: u32) -> Result<[u8; 32], Error> {
+        Ok(self.0.command(protocol::Sha256Read { addr, len })?.digest)
+    }
+
+    pub fn flash_read(&mut self, addr: u32, size: u32) -> Result<Vec<u8>, Error> {
+        Ok(self.0.command(protocol::FlashRead { addr, size })?.data)
+    }
+
+    pub fn flash_program(&mut self, addr: u32, reader: &mut impl Read) -> Result<u32, Error> {
+        let mut data = vec![0u8; 4000];
+        let size = reader.read(&mut data)?;
+        if size == 0 {
+            return Ok(0);
+        }
+        data.truncate(size);
+
+        self.0.command(protocol::FlashProgram { addr, data })?;
+
+        Ok(size as u32)
+    }
+
+    pub fn flash_erase(&mut self, start: u32, end: u32) -> Result<(), Error> {
+        self.0.command(protocol::FlashErase { start, end })?;
+
+        Ok(())
     }
 }
 
