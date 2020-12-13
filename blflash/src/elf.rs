@@ -1,8 +1,5 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::{
-    borrow::Cow,
-    io::{Cursor, Write},
-};
 
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::ElfFile;
