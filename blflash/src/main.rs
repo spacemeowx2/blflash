@@ -38,7 +38,7 @@ struct Boot2Opt {
     /// Path to efuse_bootheader_cfg.conf
     #[structopt(parse(from_os_str))]
     boot_header_cfg: Option<PathBuf>,
-    /// With boot2
+    /// Without boot2
     #[structopt(short, long)]
     without_boot2: bool,
 }
