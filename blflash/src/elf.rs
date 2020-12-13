@@ -37,7 +37,7 @@ impl<'a> FirmwareImage<'a> {
                 header.file_size() > 0 && header.get_type() == Ok(Type::Load) && header.offset() > 0
             })
             .flat_map(move |header| {
-                let addr = header.virtual_addr() as u32;
+                let addr = header.physical_addr() as u32;
                 let size = header.file_size() as u32;
                 let data = match header.get_data(&self.elf) {
                     Ok(SegmentData::Undefined(data)) => data,
@@ -46,18 +46,21 @@ impl<'a> FirmwareImage<'a> {
                 Some(CodeSegment { addr, data, size })
             })
     }
-    pub fn to_flash_bin(&self, _chip: &dyn Chip) -> Vec<u8> {
-        // TODO: why it works???
-        let segs = self.segments().collect::<Vec<_>>();
+    pub fn to_flash_bin(&self, chip: &dyn Chip) -> Vec<u8> {
+        let segs = self
+            .segments()
+            .filter_map(|segment| chip.get_flash_segment(segment))
+            .collect::<Vec<_>>();
+        let size = segs
+            .iter()
+            .fold(0, |len, i| len.max(i.addr + i.data.len() as u32));
 
-        let bin = Vec::new();
-        let mut writer = Cursor::new(bin);
-
+        let mut bin = Vec::new();
+        bin.resize(size as usize, 0xFF);
         for s in segs {
-            writer.write_all(&s.data).unwrap();
+            bin[s.addr as usize..s.addr as usize + s.data.len()].copy_from_slice(&s.data);
         }
-
-        writer.into_inner()
+        bin
     }
 }
 
