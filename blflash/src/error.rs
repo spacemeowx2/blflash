@@ -23,7 +23,7 @@ pub enum Error {
     UnrecognizedChip,
     #[error("flash chip not supported, flash id: {0:#x}")]
     UnsupportedFlash(u8),
-    #[error("ROM error")]
+    #[error("ROM error {0:?}")]
     RomError(RomError),
     #[error("Parse error")]
     ParseError(#[from] deku::error::DekuError),
