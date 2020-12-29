@@ -180,11 +180,12 @@ fn read_image<'a>(chip: &dyn Chip, image: &'a [u8]) -> Result<Cow<'a, [u8]>, Err
 
 fn flash(opt: FlashOpt) -> Result<(), Error> {
     let chip = Bl602;
+    let image = read(&opt.image)?;
+    let image = read_image(&chip, &image)?;
+
     let mut flasher = opt.conn.create_flasher(chip)?;
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
-    let image = read(&opt.image)?;
-    let image = read_image(&chip, &image)?;
 
     let segments = opt.boot.get_segments(&chip, Vec::from(image))?;
     flasher.load_segments(opt.force, segments.into_iter())?;
@@ -197,11 +198,12 @@ fn flash(opt: FlashOpt) -> Result<(), Error> {
 
 fn check(opt: CheckOpt) -> Result<(), Error> {
     let chip = Bl602;
+    let image = read(&opt.image)?;
+    let image = read_image(&chip, &image)?;
+
     let mut flasher = opt.conn.create_flasher(Bl602)?;
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
-    let image = read(&opt.image)?;
-    let image = read_image(&chip, &image)?;
 
     let segments = opt.boot.get_segments(&chip, Vec::from(image))?;
     flasher.check_segments(segments.into_iter())?;
@@ -210,12 +212,12 @@ fn check(opt: CheckOpt) -> Result<(), Error> {
 }
 
 fn dump(opt: DumpOpt) -> Result<(), Error> {
+    let mut output = File::create(opt.output)?;
     let mut flasher = opt.conn.create_flasher(Bl602)?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
 
-    let mut output = File::create(opt.output)?;
     flasher.dump_flash(opt.start..opt.end, &mut output)?;
 
     log::info!("Success");

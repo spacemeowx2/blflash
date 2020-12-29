@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum Error {
     #[error("IO error while using serial port: {0}")]
     Serial(#[from] serial::core::Error),
+    #[error("IO error: {0}")]
+    IO(#[from] std::io::Error),
     #[error("Failed to connect to the device")]
     ConnectionFailed,
     #[error("Timeout while running command")]
@@ -27,12 +29,6 @@ pub enum Error {
     ParseError(#[from] deku::error::DekuError),
     #[error("Parse toml error")]
     TomlError(#[from] toml::de::Error),
-}
-
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
-        Self::Serial(serial::core::Error::from(err))
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
