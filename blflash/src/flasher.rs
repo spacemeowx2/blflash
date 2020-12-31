@@ -116,7 +116,11 @@ impl Flasher {
                 .eflash_loader()
                 .sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
-                log::warn!("sha256 not match: {:x?} != {:x?}", sha256, local_hash);
+                log::warn!(
+                    "sha256 not match: {} != {}",
+                    hex::encode(sha256),
+                    hex::encode(local_hash)
+                );
             }
         }
         Ok(())
@@ -136,10 +140,10 @@ impl Flasher {
                 .sha256_read(segment.addr, segment.size())?;
             if sha256 != &local_hash[..] {
                 log::warn!(
-                    "{:x} sha256 not match: {:x?} != {:x?}",
+                    "{:x} sha256 not match: {} != {}",
                     segment.addr,
-                    sha256,
-                    local_hash
+                    hex::encode(sha256),
+                    hex::encode(local_hash)
                 );
             } else {
                 log::info!("{:x} sha256 match", segment.addr);
