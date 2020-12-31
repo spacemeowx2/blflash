@@ -1,0 +1,30 @@
+on:
+  release:
+    types: [published]
+
+name: Publish
+
+jobs:
+  publish:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cache Cargo
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: ubuntu-latest-stable-cargo-v1
+          restore-keys: |
+            ubuntu-latest-stable-cargo-v1
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: cargo publish
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: -p blflash --token ${{ secrets.CRATES_IO_TOKEN }}

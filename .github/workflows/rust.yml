@@ -87,5 +87,3 @@ jobs:
           file: target/${{ matrix.target }}/release/blflash
           asset_name: blflash-${{ matrix.target }}
           tag: ${{ github.ref }}
-
-          
