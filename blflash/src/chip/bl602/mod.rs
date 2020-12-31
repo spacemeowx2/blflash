@@ -43,6 +43,7 @@ impl Chip for Bl602 {
         &self,
         mut partition_cfg: PartitionCfg,
         mut bootheader_cfg: BootHeaderCfg,
+        ro_params: Vec<u8>,
         bin: &[u8],
     ) -> Result<Vec<RomSegment>, Error> {
         partition_cfg.update()?;
@@ -57,7 +58,7 @@ impl Chip for Bl602 {
             RomSegment::from_vec(0xf000, partition_cfg),
             RomSegment::from_vec(0x10000, fw_image),
             // TODO: generate from dts
-            RomSegment::from_slice(0x1f8000, RO_PARAMS),
+            RomSegment::from_vec(0x1f8000, ro_params),
         ];
 
         Ok(segments)

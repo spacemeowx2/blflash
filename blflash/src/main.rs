@@ -33,11 +33,14 @@ struct Connection {
 #[derive(StructOpt)]
 struct Boot2Opt {
     /// Path to partition_cfg.toml, default to be partition/partition_cfg_2M.toml
-    #[structopt(parse(from_os_str))]
+    #[structopt(long, parse(from_os_str))]
     partition_cfg: Option<PathBuf>,
     /// Path to efuse_bootheader_cfg.conf
-    #[structopt(parse(from_os_str))]
+    #[structopt(long, parse(from_os_str))]
     boot_header_cfg: Option<PathBuf>,
+    /// Path to ro_params.dtb
+    #[structopt(long, parse(from_os_str))]
+    dtb: Option<PathBuf>,
     /// Without boot2
     #[structopt(short, long)]
     without_boot2: bool,
@@ -132,8 +135,12 @@ impl Boot2Opt {
             .unwrap_or_else(|| Ok(bl602::DEFAULT_BOOTHEADER_CFG.to_vec()))?;
         let partition_cfg = toml::from_slice(&partition_cfg)?;
         let BootHeaderCfgFile { boot_header_cfg } = toml::from_slice(&boot_header_cfg)?;
+        let ro_params = self
+            .dtb
+            .map(read)
+            .unwrap_or_else(|| Ok(bl602::RO_PARAMS.to_vec()))?;
 
-        let segments = chip.with_boot2(partition_cfg, boot_header_cfg, image)?;
+        let segments = chip.with_boot2(partition_cfg, boot_header_cfg, ro_params, image)?;
 
         Ok(segments)
     }

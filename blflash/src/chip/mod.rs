@@ -11,6 +11,7 @@ pub trait Chip {
         &self,
         partition_cfg: PartitionCfg,
         bootheader_cfg: BootHeaderCfg,
+        ro_params: Vec<u8>,
         bin: &[u8],
     ) -> Result<Vec<RomSegment>, Error>;
 }
