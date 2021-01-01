@@ -24,6 +24,10 @@ impl Bl602 {
 }
 
 impl Chip for Bl602 {
+    fn target(&self) -> &'static str {
+        "riscv32imac-unknown-none-elf"
+    }
+
     fn get_eflash_loader(&self) -> &[u8] {
         EFLASH_LOADER
     }
