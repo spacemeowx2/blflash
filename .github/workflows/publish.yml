@@ -24,8 +24,13 @@ jobs:
         with:
           toolchain: stable
           override: true
-      - name: cargo publish
+      - name: cargo publish blflash
         uses: actions-rs/cargo@v1
         with:
           command: publish
           args: --manifest-path blflash/Cargo.toml --token ${{ secrets.CRATES_IO_TOKEN }}
+      - name: cargo publish cargo-blflash
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --manifest-path cargo-blflash/Cargo.toml --token ${{ secrets.CRATES_IO_TOKEN }}
