@@ -6,7 +6,7 @@ mod flasher;
 pub mod image;
 use async_serial::AsyncSerial;
 use serde::Deserialize;
-mod async_serial;
+pub mod async_serial;
 pub mod fs;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

@@ -39,6 +39,13 @@ futures = "0.3"
 wasm-bindgen = "0.2"
 js-sys = "0.3"
 once_cell = "1.5"
+wasm-bindgen-futures = "0.4"
+async-timer = "0.7"
+gloo-events = "0.1"
+wasm-streams = "0.1"
+
+[build-dependencies]
+wasm-bindgen-webidl = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 version = "0.3"
