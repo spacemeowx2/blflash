@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -29,6 +30,8 @@ pub enum Error {
     ParseError(#[from] deku::error::DekuError),
     #[error("Parse toml error")]
     TomlError(#[from] toml::de::Error),
+    #[error("WebError {0}")]
+    WebError(&'static str),
 }
 
 #[derive(Copy, Clone, Debug)]

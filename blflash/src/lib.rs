@@ -4,7 +4,11 @@ pub mod elf;
 mod error;
 mod flasher;
 pub mod image;
+use async_serial::AsyncSerial;
+use serde::Deserialize;
+mod async_serial;
 
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub use error::{Error, RomError};
 pub use flasher::Flasher;
 
@@ -16,7 +20,7 @@ use crate::{
     elf::{FirmwareImage, RomSegment},
     image::BootHeaderCfgFile,
 };
-use serial::{BaudRate, CharSize, FlowControl, Parity, SerialPort, SerialPortSettings, StopBits};
+use serial::{BaudRate, CharSize, FlowControl, Parity, SerialPortSettings, StopBits};
 use std::{
     borrow::Cow,
     fs::{read, File},
@@ -24,7 +28,7 @@ use std::{
 };
 use structopt::StructOpt;
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Deserialize)]
 pub struct Connection {
     /// Serial port
     #[structopt(short, long)]
@@ -37,7 +41,7 @@ pub struct Connection {
     pub initial_baud_rate: usize,
 }
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Deserialize)]
 pub struct Boot2Opt {
     /// Path to partition_cfg.toml, default to be partition/partition_cfg_2M.toml
     #[structopt(long, parse(from_os_str))]
@@ -53,7 +57,7 @@ pub struct Boot2Opt {
     pub without_boot2: bool,
 }
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Deserialize)]
 pub struct FlashOpt {
     #[structopt(flatten)]
     pub conn: Connection,
@@ -67,7 +71,7 @@ pub struct FlashOpt {
     pub boot: Boot2Opt,
 }
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Deserialize)]
 pub struct CheckOpt {
     #[structopt(flatten)]
     pub conn: Connection,
@@ -78,7 +82,7 @@ pub struct CheckOpt {
     pub boot: Boot2Opt,
 }
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Deserialize)]
 pub struct DumpOpt {
     #[structopt(flatten)]
     pub conn: Connection,
@@ -104,25 +108,28 @@ pub enum Opt {
 }
 
 impl Connection {
-    pub fn open_serial(&self) -> Result<impl SerialPort, Error> {
-        let mut serial = serial::open(&self.port)?;
-        serial.reconfigure(&|setup: &mut dyn SerialPortSettings| {
-            setup.set_char_size(CharSize::Bits8);
-            setup.set_stop_bits(StopBits::Stop1);
-            setup.set_parity(Parity::ParityNone);
-            setup.set_flow_control(FlowControl::FlowNone);
-            Ok(())
-        })?;
+    pub async fn open_serial(&self) -> Result<AsyncSerial, Error> {
+        let mut serial = AsyncSerial::open(&self.port).await?;
+        serial
+            .reconfigure(&|setup: &mut dyn SerialPortSettings| {
+                setup.set_char_size(CharSize::Bits8);
+                setup.set_stop_bits(StopBits::Stop1);
+                setup.set_parity(Parity::ParityNone);
+                setup.set_flow_control(FlowControl::FlowNone);
+                Ok(())
+            })
+            .await?;
         Ok(serial)
     }
-    pub fn create_flasher(&self, chip: impl Chip + 'static) -> Result<Flasher, Error> {
-        let serial = self.open_serial()?;
+    pub async fn create_flasher(&self, chip: impl Chip + 'static) -> Result<Flasher, Error> {
+        let serial = self.open_serial().await?;
         Flasher::connect(
             chip,
             serial,
             BaudRate::from_speed(self.initial_baud_rate),
             BaudRate::from_speed(self.baud_rate),
         )
+        .await
     }
 }
 
@@ -192,47 +199,49 @@ pub fn read_image<'a>(chip: &dyn Chip, image: &'a [u8]) -> Result<Cow<'a, [u8]>,
     })
 }
 
-pub fn flash(opt: FlashOpt) -> Result<(), Error> {
+pub async fn flash(opt: FlashOpt) -> Result<(), Error> {
     let chip = Bl602;
     let image = read(&opt.image)?;
     let image = read_image(&chip, &image)?;
 
-    let mut flasher = opt.conn.create_flasher(chip)?;
+    let mut flasher = opt.conn.create_flasher(chip).await?;
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
 
     let segments = opt.boot.get_segments(&chip, Vec::from(image))?;
-    flasher.load_segments(opt.force, segments.into_iter())?;
-    flasher.reset()?;
+    flasher
+        .load_segments(opt.force, segments.into_iter())
+        .await?;
+    flasher.reset().await?;
 
     log::info!("Success");
 
     Ok(())
 }
 
-pub fn check(opt: CheckOpt) -> Result<(), Error> {
+pub async fn check(opt: CheckOpt) -> Result<(), Error> {
     let chip = Bl602;
     let image = read(&opt.image)?;
     let image = read_image(&chip, &image)?;
 
-    let mut flasher = opt.conn.create_flasher(Bl602)?;
+    let mut flasher = opt.conn.create_flasher(Bl602).await?;
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
 
     let segments = opt.boot.get_segments(&chip, Vec::from(image))?;
-    flasher.check_segments(segments.into_iter())?;
+    flasher.check_segments(segments.into_iter()).await?;
 
     Ok(())
 }
 
-pub fn dump(opt: DumpOpt) -> Result<(), Error> {
+pub async fn dump(opt: DumpOpt) -> Result<(), Error> {
     let mut output = File::create(opt.output)?;
-    let mut flasher = opt.conn.create_flasher(Bl602)?;
+    let mut flasher = opt.conn.create_flasher(Bl602).await?;
 
     log::info!("Bootrom version: {}", flasher.boot_info().bootrom_version);
     log::trace!("Boot info: {:x?}", flasher.boot_info());
 
-    flasher.dump_flash(opt.start..opt.end, &mut output)?;
+    flasher.dump_flash(opt.start..opt.end, &mut output).await?;
 
     log::info!("Success");
 

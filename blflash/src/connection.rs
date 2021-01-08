@@ -1,13 +1,16 @@
 #![macro_use]
 
-use crate::{Error, RomError};
+use crate::{
+    async_serial::AsyncSerial,
+    {Error, RomError},
+};
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use deku::prelude::*;
-use std::io::{Cursor, Read, Write};
-use std::thread::sleep;
+use futures::{AsyncReadExt, AsyncWriteExt};
+use std::io::{Cursor, Write};
 use std::time::Duration;
 
-use serial::{BaudRate, SerialPort, SerialPortSettings};
+use serial::{BaudRate, SerialPortSettings};
 
 pub const DEFAULT_BAUDRATE: BaudRate = BaudRate::Baud115200;
 
@@ -57,90 +60,83 @@ pub trait Command: DekuContainerWrite {
 }
 
 pub struct Connection {
-    serial: Box<dyn SerialPort>,
+    serial: AsyncSerial,
     baud_rate: Option<BaudRate>,
 }
 
 impl Connection {
-    pub fn new(serial: impl SerialPort + 'static) -> Self {
+    pub fn new(serial: AsyncSerial) -> Self {
         Connection {
-            serial: Box::new(serial),
+            serial,
             baud_rate: None,
         }
     }
 
-    pub fn into_inner(self) -> Box<dyn SerialPort> {
+    pub fn into_inner(self) -> AsyncSerial {
         self.serial
     }
 
-    pub fn reset(&mut self) -> Result<(), Error> {
-        self.serial.set_rts(false)?;
-        sleep(Duration::from_millis(50));
-        self.serial.set_dtr(true)?;
-        sleep(Duration::from_millis(50));
-        self.serial.set_dtr(false)?;
-        sleep(Duration::from_millis(50));
+    pub async fn reset(&mut self) -> Result<(), Error> {
+        self.serial.set_rts(false).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
+        self.serial.set_dtr(true).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
+        self.serial.set_dtr(false).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
 
         Ok(())
     }
 
-    pub fn reset_to_flash(&mut self) -> Result<(), Error> {
-        self.serial.set_rts(true)?;
-        sleep(Duration::from_millis(50));
-        self.serial.set_dtr(true)?;
-        sleep(Duration::from_millis(50));
-        self.serial.set_dtr(false)?;
-        sleep(Duration::from_millis(50));
-        self.serial.set_rts(false)?;
-        sleep(Duration::from_millis(50));
+    pub async fn reset_to_flash(&mut self) -> Result<(), Error> {
+        self.serial.set_rts(true).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
+        self.serial.set_dtr(true).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
+        self.serial.set_dtr(false).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
+        self.serial.set_rts(false).await?;
+        self.serial.sleep(Duration::from_millis(50)).await;
 
         Ok(())
     }
 
-    pub fn set_timeout(&mut self, timeout: Duration) -> Result<(), Error> {
-        self.serial.set_timeout(timeout)?;
+    pub async fn timeout(&self) -> Duration {
+        self.serial.timeout().await
+    }
+
+    pub async fn set_timeout(&mut self, timeout: Duration) -> Result<(), Error> {
+        self.serial.set_timeout(timeout).await?;
         Ok(())
     }
 
-    pub fn set_baud(&mut self, speed: BaudRate) -> Result<(), Error> {
+    pub async fn set_baud(&mut self, speed: BaudRate) -> Result<(), Error> {
         self.baud_rate = Some(speed);
         self.serial
-            .reconfigure(&|setup: &mut dyn SerialPortSettings| setup.set_baud_rate(speed))?;
+            .reconfigure(&|setup: &mut dyn SerialPortSettings| setup.set_baud_rate(speed))
+            .await?;
         Ok(())
     }
 
-    pub fn with_timeout<T, F: FnMut(&mut Connection) -> Result<T, Error>>(
-        &mut self,
-        timeout: Duration,
-        mut f: F,
-    ) -> Result<T, Error> {
-        let old_timeout = self.serial.timeout();
-        self.serial.set_timeout(timeout)?;
-        let result = f(self);
-        self.serial.set_timeout(old_timeout)?;
-        result
-    }
-
-    fn read_exact(&mut self, len: usize) -> Result<Vec<u8>, Error> {
+    async fn read_exact(&mut self, len: usize) -> Result<Vec<u8>, Error> {
         let mut buf = vec![0u8; len];
-        self.serial.read_exact(&mut buf)?;
+        self.serial.read_exact(&mut buf).await?;
         Ok(buf)
     }
 
-    pub fn read_response(&mut self, len: usize) -> Result<Vec<u8>, Error> {
-        let resp = self.read_exact(2)?;
+    pub async fn read_response(&mut self, len: usize) -> Result<Vec<u8>, Error> {
+        let resp = self.read_exact(2).await?;
         match &resp[0..2] {
             // OK
             [0x4f, 0x4b] => {
                 if len > 0 {
-                    self.read_exact(len)
+                    self.read_exact(len).await
                 } else {
                     Ok(vec![])
                 }
             }
             // FL
             [0x46, 0x4c] => {
-                let code = self.read_exact(2)?;
+                let code = self.read_exact(2).await?;
                 let mut reader = Cursor::new(code);
                 let code = reader.read_u16::<LittleEndian>()?;
                 Err(Error::RomError(RomError::from(code)))
@@ -157,28 +153,28 @@ impl Connection {
             * (duration.as_millis() as usize)
     }
 
-    pub fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
-        Ok(self.serial.write_all(buf)?)
+    pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
+        Ok(self.serial.write_all(buf).await?)
     }
 
-    pub fn flush(&mut self) -> Result<(), Error> {
-        Ok(self.serial.flush()?)
+    pub async fn flush(&mut self) -> Result<(), Error> {
+        Ok(self.serial.flush().await?)
     }
 
-    pub fn command<C: Command>(&mut self, command: C) -> Result<C::Response, Error> {
+    pub async fn command<C: Command>(&mut self, command: C) -> Result<C::Response, Error> {
         let req = self.to_cmd(command)?;
-        self.write_all(&req)?;
-        self.flush()?;
+        self.write_all(&req).await?;
+        self.flush().await?;
 
         Ok(if let Some(resp) = C::Response::no_response_payload() {
-            self.read_response(0)?;
+            self.read_response(0).await?;
             resp
         } else {
-            let len = LittleEndian::read_u16(&self.read_response(2)?);
+            let len = LittleEndian::read_u16(&self.read_response(2).await?);
             let buf = Vec::new();
             let mut writer = Cursor::new(buf);
             writer.write_u16::<LittleEndian>(len)?;
-            writer.write_all(&self.read_exact(len as usize)?)?;
+            writer.write_all(&self.read_exact(len as usize).await?)?;
             C::Response::from_payload(&writer.into_inner())?
         })
     }

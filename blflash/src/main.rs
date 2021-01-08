@@ -1,5 +1,6 @@
 use blflash::{check, dump, flash, Opt};
 use env_logger::Env;
+use futures::executor::block_on;
 use main_error::MainError;
 
 #[paw::main]
@@ -8,11 +9,13 @@ fn main(args: Opt) -> Result<(), MainError> {
         .format_timestamp(None)
         .init();
 
-    match args {
-        Opt::Flash(opt) => flash(opt)?,
-        Opt::Check(opt) => check(opt)?,
-        Opt::Dump(opt) => dump(opt)?,
-    };
+    block_on(async {
+        match args {
+            Opt::Flash(opt) => flash(opt).await,
+            Opt::Check(opt) => check(opt).await,
+            Opt::Dump(opt) => dump(opt).await,
+        }
+    })?;
 
     Ok(())
 }

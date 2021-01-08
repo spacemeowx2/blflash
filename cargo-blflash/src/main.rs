@@ -32,7 +32,7 @@ enum Opt {
     Blflash(BlflashOpt),
 }
 
-fn blflash_main(args: BlflashOpt) -> Result<()> {
+async fn blflash_main(args: BlflashOpt) -> Result<()> {
     let chip = Bl602;
     let target = chip.target();
 
@@ -51,7 +51,7 @@ fn blflash_main(args: BlflashOpt) -> Result<()> {
         boot: args.boot,
     };
 
-    flash(flash_opt)?;
+    flash(flash_opt).await?;
 
     Ok(())
 }
@@ -62,9 +62,11 @@ fn main(args: Opt) -> Result<()> {
         .format_timestamp(None)
         .init();
 
-    match args {
-        Opt::Blflash(opt) => blflash_main(opt),
-    }
+    futures::executor::block_on(async {
+        match args {
+            Opt::Blflash(opt) => blflash_main(opt).await,
+        }
+    })
 }
 
 fn get_artifact_path(target: &str, release: bool, example: &Option<String>) -> Result<PathBuf> {
