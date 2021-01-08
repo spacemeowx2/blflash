@@ -16,7 +16,7 @@ pub struct AsyncSerial(Box<dyn SerialPort>);
 
 impl AsyncSerial {
     pub async fn open(port: &str) -> crate::Result<Self> {
-        Ok(AsyncSerial(Box::new(serial::open(port))))
+        Ok(AsyncSerial(Box::new(serial::open(port)?)))
     }
     // pub fn new(serial: impl SerialPort + 'static) -> Self {
     //     Self(Box::new(serial))

@@ -1,0 +1,21 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"command": "cargo watch -x check",
+			"problemMatcher": "$rustc-watch",
+			"group": "build",
+			"label": "watch native",
+			"isBackground": true
+		},
+		{
+			"type": "shell",
+			"command": "cargo watch -x 'check --target wasm32-unknown-unknown'",
+			"problemMatcher": "$rustc-watch",
+			"group": "build",
+			"label": "watch wasm",
+			"isBackground": true
+		}
+	]
+}

@@ -7,6 +7,7 @@ pub mod image;
 use async_serial::AsyncSerial;
 use serde::Deserialize;
 mod async_serial;
+pub mod fs;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub use error::{Error, RomError};
@@ -20,12 +21,9 @@ use crate::{
     elf::{FirmwareImage, RomSegment},
     image::BootHeaderCfgFile,
 };
+use fs::{read, File};
 use serial::{BaudRate, CharSize, FlowControl, Parity, SerialPortSettings, StopBits};
-use std::{
-    borrow::Cow,
-    fs::{read, File},
-    path::PathBuf,
-};
+use std::{borrow::Cow, path::PathBuf};
 use structopt::StructOpt;
 
 #[derive(StructOpt, Deserialize)]
@@ -41,7 +39,7 @@ pub struct Connection {
     pub initial_baud_rate: usize,
 }
 
-#[derive(StructOpt, Deserialize)]
+#[derive(StructOpt, Deserialize, Default)]
 pub struct Boot2Opt {
     /// Path to partition_cfg.toml, default to be partition/partition_cfg_2M.toml
     #[structopt(long, parse(from_os_str))]
@@ -54,26 +52,31 @@ pub struct Boot2Opt {
     pub dtb: Option<PathBuf>,
     /// Without boot2
     #[structopt(short, long)]
+    #[serde(default)]
     pub without_boot2: bool,
 }
 
 #[derive(StructOpt, Deserialize)]
 pub struct FlashOpt {
     #[structopt(flatten)]
+    #[serde(flatten)]
     pub conn: Connection,
     /// Bin file
     #[structopt(parse(from_os_str))]
     pub image: PathBuf,
     /// Don't skip if hash matches
     #[structopt(short, long)]
+    #[serde(default)]
     pub force: bool,
     #[structopt(flatten)]
+    #[serde(default, flatten)]
     pub boot: Boot2Opt,
 }
 
 #[derive(StructOpt, Deserialize)]
 pub struct CheckOpt {
     #[structopt(flatten)]
+    #[serde(flatten)]
     pub conn: Connection,
     /// Bin file
     #[structopt(parse(from_os_str))]
@@ -85,6 +88,7 @@ pub struct CheckOpt {
 #[derive(StructOpt, Deserialize)]
 pub struct DumpOpt {
     #[structopt(flatten)]
+    #[serde(flatten)]
     pub conn: Connection,
     /// Output file
     #[structopt(parse(from_os_str))]

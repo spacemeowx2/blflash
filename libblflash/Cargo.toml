@@ -13,3 +13,4 @@ blflash = { version = "0.3", path = "../blflash" }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"

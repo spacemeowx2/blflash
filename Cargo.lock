@@ -97,6 +97,7 @@ dependencies = [
  "js-sys",
  "log",
  "main_error",
+ "once_cell",
  "parse_int",
  "paw",
  "serde",
