@@ -3,7 +3,6 @@
 use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
-    fs,
     io::{self, Cursor, Write},
     path::{Path, PathBuf},
     sync::Mutex,
@@ -44,7 +43,11 @@ impl Drop for File {
 }
 
 pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
-    fs::read(path)
+    FS.lock()
+        .unwrap()
+        .get(&path.as_ref().to_path_buf())
+        .map(Clone::clone)
+        .ok_or(io::ErrorKind::NotFound.into())
 }
 
 pub fn fs_read_file(path: PathBuf) -> Option<Vec<u8>> {

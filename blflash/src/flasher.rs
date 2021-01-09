@@ -4,11 +4,11 @@ use crate::{connection::Connection, elf::RomSegment};
 use indicatif::{HumanBytes, ProgressBar, ProgressStyle};
 use serial::BaudRate;
 use sha2::{Digest, Sha256};
+use std::ops::Range;
 use std::{
     io::{Cursor, Read, Write},
     time::{Duration, Instant},
 };
-use std::{ops::Range, thread::sleep};
 
 fn get_bar(len: u64) -> ProgressBar {
     let bar = ProgressBar::new(len);
@@ -97,20 +97,26 @@ impl Flasher {
             let mut reader = Cursor::new(&segment.data);
             let mut cur = segment.addr;
 
+            #[cfg(not(target_arch = "wasm32"))]
             let start = Instant::now();
             log::info!("Program flash... {:x}", local_hash);
+            #[cfg(not(target_arch = "wasm32"))]
             let pb = get_bar(segment.size() as u64);
             loop {
                 let size = self.eflash_loader().flash_program(cur, &mut reader).await?;
                 // log::trace!("program {:x} {:x}", cur, size);
                 cur += size;
+                #[cfg(not(target_arch = "wasm32"))]
                 pb.inc(size as u64);
                 if size == 0 {
                     break;
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
             pb.finish_and_clear();
+            #[cfg(not(target_arch = "wasm32"))]
             let elapsed = start.elapsed();
+            #[cfg(not(target_arch = "wasm32"))]
             log::info!(
                 "Program done {:?} {}/s",
                 elapsed,
@@ -168,6 +174,7 @@ impl Flasher {
 
         const BLOCK_SIZE: usize = 4096;
         let mut cur = range.start;
+        #[cfg(not(target_arch = "wasm32"))]
         let pb = get_bar(range.len() as u64);
         while cur < range.end {
             let data = self
@@ -176,8 +183,10 @@ impl Flasher {
                 .await?;
             writer.write_all(&data)?;
             cur += data.len() as u32;
+            #[cfg(not(target_arch = "wasm32"))]
             pb.inc(data.len() as u64);
         }
+        #[cfg(not(target_arch = "wasm32"))]
         pb.finish_and_clear();
 
         Ok(())
@@ -190,18 +199,24 @@ impl Flasher {
         self.boot_rom().load_boot_header(&mut reader).await?;
         self.boot_rom().load_segment_header(&mut reader).await?;
 
+        #[cfg(not(target_arch = "wasm32"))]
         let start = Instant::now();
         log::info!("Sending eflash_loader...");
+        #[cfg(not(target_arch = "wasm32"))]
         let pb = get_bar(len as u64);
         loop {
             let size = self.boot_rom().load_segment_data(&mut reader).await?;
+            #[cfg(not(target_arch = "wasm32"))]
             pb.inc(size as u64);
             if size == 0 {
                 break;
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
         pb.finish_and_clear();
+        #[cfg(not(target_arch = "wasm32"))]
         let elapsed = start.elapsed();
+        #[cfg(not(target_arch = "wasm32"))]
         log::info!(
             "Finished {:?} {}/s",
             elapsed,
@@ -210,7 +225,7 @@ impl Flasher {
 
         self.boot_rom().check_image().await?;
         self.boot_rom().run_image().await?;
-        sleep(Duration::from_millis(500));
+        self.connection.sleep(Duration::from_millis(500)).await;
         self.connection.set_baud(self.flash_speed).await?;
         self.handshake().await?;
 
@@ -239,11 +254,13 @@ impl Flasher {
             let len = connection.calc_duration_length(Duration::from_millis(5));
             log::trace!("5ms send count {}", len);
             let data: Vec<u8> = std::iter::repeat(0x55u8).take(len).collect();
+            #[cfg(not(target_arch = "wasm32"))]
             let start = Instant::now();
             connection.write_all(&data).await?;
             connection.flush().await?;
+            #[cfg(not(target_arch = "wasm32"))]
             log::trace!("handshake sent elapsed {:?}", start.elapsed());
-            sleep(Duration::from_millis(200));
+            connection.sleep(Duration::from_millis(200)).await;
 
             for _ in 0..5 {
                 if connection.read_response(0).await.is_ok() {

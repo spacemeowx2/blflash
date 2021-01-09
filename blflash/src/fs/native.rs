@@ -11,12 +11,12 @@ pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
 
 pub use fs::File;
 
-pub fn fs_read_file(path: PathBuf) -> Option<Vec<u8>> {
+pub fn fs_read_file(_path: PathBuf) -> Option<Vec<u8>> {
     unimplemented!("only avaliable on wasm")
 }
-pub fn fs_write_file(path: PathBuf, content: Vec<u8>) {
+pub fn fs_write_file(_path: PathBuf, _content: Vec<u8>) {
     unimplemented!("only avaliable on wasm")
 }
-pub fn fs_remove_file(path: PathBuf) {
+pub fn fs_remove_file(_path: PathBuf) {
     unimplemented!("only avaliable on wasm")
 }

@@ -1,31 +1,29 @@
-use blflash::{Boot2Opt, Connection, Error, FlashOpt, DumpOpt, fs};
+use blflash::{Error, FlashOpt, DumpOpt, fs};
 use wasm_bindgen::prelude::*;
 use std::path::PathBuf;
 mod utils;
 
-fn map_result(r: Result<(), Error>) -> JsValue {
-    match r {
-        Ok(_) => JsValue::UNDEFINED,
-        Err(e) => JsValue::from_str(&e.to_string()),
-    }
+fn init() {
+    utils::set_panic_hook();
+    wasm_logger::init(wasm_logger::Config::new(log::Level::Trace));
 }
 
 #[wasm_bindgen]
-pub async fn flash(opt: JsValue) -> JsValue {
-    utils::set_panic_hook();
+pub async fn flash(opt: JsValue) -> Result<(), JsValue> {
+    init();
 
-    let opt: FlashOpt = opt.into_serde().unwrap();
-    let result = blflash::flash(opt).await;
-    map_result(result)
+    let opt: FlashOpt = opt.into_serde().map_err(|e| e.to_string())?;
+    blflash::flash(opt).await.map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[wasm_bindgen]
-pub async fn dump(opt: JsValue) -> JsValue {
-    utils::set_panic_hook();
+pub async fn dump(opt: JsValue) -> Result<(), JsValue> {
+    init();
 
-    let opt: DumpOpt = opt.into_serde().unwrap();
-    let result = blflash::dump(opt).await;
-    map_result(result)
+    let opt: DumpOpt = opt.into_serde().map_err(|e| e.to_string())?;
+    blflash::dump(opt).await.map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 struct FS;

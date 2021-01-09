@@ -78,26 +78,30 @@ impl Connection {
 
     pub async fn reset(&mut self) -> Result<(), Error> {
         self.serial.set_rts(false).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
         self.serial.set_dtr(true).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
         self.serial.set_dtr(false).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
 
         Ok(())
     }
 
     pub async fn reset_to_flash(&mut self) -> Result<(), Error> {
         self.serial.set_rts(true).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
         self.serial.set_dtr(true).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
         self.serial.set_dtr(false).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
         self.serial.set_rts(false).await?;
-        self.serial.sleep(Duration::from_millis(50)).await;
+        self.sleep(Duration::from_millis(50)).await;
 
         Ok(())
+    }
+
+    pub async fn sleep(&self, duration: Duration) {
+        self.serial.sleep(duration).await
     }
 
     pub async fn timeout(&self) -> Duration {
