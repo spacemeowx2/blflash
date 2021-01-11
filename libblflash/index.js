@@ -1,4 +1,4 @@
-import init, { dump, flash, FS } from './pkg/libblflash.js'
+import init, { init_blflash, dump, flash, FS } from './pkg/libblflash.js'
 
 async function onDump() {
     try {
@@ -11,14 +11,13 @@ async function onDump() {
             end: 0x100000,
         })
         console.log('done')
-        debugger
         const result = FS.read_file('output.bin')
         console.log(result)
     } catch(e) {
         console.error('error during Dump', e)
     }
 }
-async function onFlash(event) {
+async function onFlash() {
     try {
         const file = document.getElementById('file').files[0]
         const content = await new Response(file).arrayBuffer()
@@ -39,6 +38,7 @@ async function main() {
     console.log('load wasm')
     await init()
     console.log('wasm loaded')
+    init_blflash()
     document.getElementById('dump').addEventListener('click', onDump)
     document.getElementById('flash').addEventListener('click', onFlash)
 }

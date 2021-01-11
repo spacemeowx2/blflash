@@ -3,15 +3,14 @@ use wasm_bindgen::prelude::*;
 use std::path::PathBuf;
 mod utils;
 
-fn init() {
+#[wasm_bindgen]
+pub fn init_blflash() {
     utils::set_panic_hook();
     wasm_logger::init(wasm_logger::Config::new(log::Level::Trace));
 }
 
 #[wasm_bindgen]
 pub async fn flash(opt: JsValue) -> Result<(), JsValue> {
-    init();
-
     let opt: FlashOpt = opt.into_serde().map_err(|e| e.to_string())?;
     blflash::flash(opt).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -19,8 +18,6 @@ pub async fn flash(opt: JsValue) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub async fn dump(opt: JsValue) -> Result<(), JsValue> {
-    init();
-
     let opt: DumpOpt = opt.into_serde().map_err(|e| e.to_string())?;
     blflash::dump(opt).await.map_err(|e| e.to_string())?;
     Ok(())
