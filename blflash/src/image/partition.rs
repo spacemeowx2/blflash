@@ -33,7 +33,7 @@ pub struct Table {
 pub struct Entry {
     #[deku(bytes = "3")]
     pub r#type: u32,
-    #[deku(writer = "Entry::write_name(name, output)")]
+    #[deku(writer = "Entry::write_name(name, deku::output)")]
     pub name: String,
     pub address0: u32,
     pub address1: u32,

@@ -38,8 +38,10 @@ impl Response for NoResponsePayload {
     }
 }
 
-pub trait Response: DekuContainerRead + Sized {
+pub trait Response: for<'a> DekuContainerRead<'a> + Sized {
     fn from_payload(input: &[u8]) -> Result<Self, DekuError> {
+        // We don't care about the lifetime 'a, as we only check the bit offset,
+        // and don't hold onto the borrow on `input`.
         let (_, r) = DekuContainerRead::from_bytes((input, 0))?;
         Ok(r)
     }
