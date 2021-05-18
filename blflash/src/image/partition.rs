@@ -1,4 +1,5 @@
 use deku::prelude::*;
+use bitvec::prelude::*;
 use serde::Deserialize;
 use std::io::Write;
 use std::iter;
