@@ -57,7 +57,7 @@ impl PartitionCfg {
 }
 
 impl Entry {
-    fn write_name(name: &str, output: &mut BitVec<Msb0, u8>) -> Result<(), DekuError> {
+    fn write_name(name: &str, output: &mut BitVec<u8, Msb0>) -> Result<(), DekuError> {
         if name.len() > 8 {
             return Err(DekuError::Unexpected("name too long".to_string()));
         }
