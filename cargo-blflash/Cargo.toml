@@ -1,7 +1,7 @@
 [package]
 name = "cargo-blflash"
 description = "BL602 serial flasher."
-version = "0.3.4"
+version = "0.3.5"
 authors = ["spacemeowx2 <spacemeowx2@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ repository = "https://github.com/spacemeowx2/blflash"
 
 [dependencies]
 cargo-project = "0.3.0"
-blflash = { version = "=0.3.4", path = "../blflash" }
+blflash = { version = "=0.3.5", path = "../blflash" }
 main_error = "0.1.1"
 serial = "0.4"
 color-eyre = "0.6.2"
