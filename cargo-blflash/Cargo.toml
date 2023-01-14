@@ -9,11 +9,11 @@ documentation = "https://docs.rs/blflash"
 repository = "https://github.com/spacemeowx2/blflash"
 
 [dependencies]
-cargo-project = "0.2.4"
+cargo-project = "0.3.0"
 blflash = { version = "=0.3.4", path = "../blflash" }
 main_error = "0.1.1"
 serial = "0.4"
-color-eyre = "0.5.10"
+color-eyre = "0.6.2"
 structopt = "0.3.21"
 paw = "1.0.0"
-env_logger = "0.8.2"
+env_logger = "0.10.0"
